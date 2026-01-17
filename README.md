@@ -26,10 +26,10 @@ git clone https://github.com/caokhang91/buddhist-go.git
 cd buddhist-go
 
 # Build the interpreter
-go build -o buddhist ./cmd/mylang
+go build -o buddhist ./cmd/buddhist
 
 # Or install directly
-go install ./cmd/mylang
+go install ./cmd/buddhist
 ```
 
 ### From Release
@@ -179,7 +179,7 @@ println(msg);
 ```
 buddhist-go/
 ├── cmd/
-│   └── mylang/          # CLI entry point
+│   └── buddhist/        # CLI entry point
 ├── pkg/
 │   ├── ast/             # Abstract Syntax Tree
 │   ├── code/            # Bytecode opcodes and instructions
@@ -238,7 +238,7 @@ go test ./...
 ### Running Examples
 
 ```bash
-go run ./cmd/mylang examples/hello.bl
+go run ./cmd/buddhist examples/hello.bl
 ```
 
 ## IDE Support
