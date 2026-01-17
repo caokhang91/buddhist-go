@@ -371,22 +371,36 @@ func (ce *CallExpression) String() string {
 	return out.String()
 }
 
-// ArrayLiteral represents an array literal: [1, 2, 3]
+// ArrayLiteral represents an array literal: [1, 2, 3] or PHP-style [key => value]
 type ArrayLiteral struct {
 	Token    token.Token // the '[' token
 	Elements []Expression
+	// PHP-style associative array support
+	Pairs map[Expression]Expression // For [key => value, ...] syntax
 }
 
 func (al *ArrayLiteral) expressionNode()      {}
 func (al *ArrayLiteral) TokenLiteral() string { return al.Token.Literal }
 func (al *ArrayLiteral) String() string {
 	var out bytes.Buffer
-	elements := []string{}
-	for _, el := range al.Elements {
-		elements = append(elements, el.String())
-	}
 	out.WriteString("[")
-	out.WriteString(strings.Join(elements, ", "))
+
+	// If we have pairs (PHP-style array)
+	if len(al.Pairs) > 0 {
+		pairs := []string{}
+		for key, value := range al.Pairs {
+			pairs = append(pairs, key.String()+" => "+value.String())
+		}
+		out.WriteString(strings.Join(pairs, ", "))
+	} else {
+		// Regular array
+		elements := []string{}
+		for _, el := range al.Elements {
+			elements = append(elements, el.String())
+		}
+		out.WriteString(strings.Join(elements, ", "))
+	}
+
 	out.WriteString("]")
 	return out.String()
 }
