@@ -296,7 +296,16 @@ func (vm *VM) Run() error {
 		case code.OpReturnValue:
 			returnValue := vm.pop()
 
-			frame := vm.popFrame()
+			vm.framesIndex--
+			// Check if we're returning from the top-level frame (e.g., spawned closure)
+			if vm.framesIndex == 0 {
+				err := vm.push(returnValue)
+				if err != nil {
+					return err
+				}
+				return nil
+			}
+			frame := vm.frames[vm.framesIndex]
 			vm.sp = frame.basePointer - 1
 
 			err := vm.push(returnValue)
@@ -305,7 +314,16 @@ func (vm *VM) Run() error {
 			}
 
 		case code.OpReturn:
-			frame := vm.popFrame()
+			vm.framesIndex--
+			// Check if we're returning from the top-level frame (e.g., spawned closure)
+			if vm.framesIndex == 0 {
+				err := vm.push(Null)
+				if err != nil {
+					return err
+				}
+				return nil
+			}
+			frame := vm.frames[vm.framesIndex]
 			vm.sp = frame.basePointer - 1
 
 			err := vm.push(Null)
