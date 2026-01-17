@@ -436,6 +436,12 @@ func (vm *OptimizedVM) Run() error {
 			vm.sp--
 
 			vm.framesIndex--
+			// Check if we're returning from the top-level frame (e.g., spawned closure)
+			if vm.framesIndex == 0 {
+				vm.stack[vm.sp] = returnValue
+				vm.sp++
+				return nil
+			}
 			frame = vm.frames[vm.framesIndex-1]
 			vm.sp = vm.frames[vm.framesIndex].basePointer - 1
 			frameIns = frame.Instructions()
@@ -445,6 +451,12 @@ func (vm *OptimizedVM) Run() error {
 
 		case code.OpReturn:
 			vm.framesIndex--
+			// Check if we're returning from the top-level frame (e.g., spawned closure)
+			if vm.framesIndex == 0 {
+				vm.stack[vm.sp] = Null
+				vm.sp++
+				return nil
+			}
 			frame = vm.frames[vm.framesIndex-1]
 			vm.sp = vm.frames[vm.framesIndex].basePointer - 1
 			frameIns = frame.Instructions()
@@ -932,7 +944,7 @@ func (vm *OptimizedVM) executeSpawnOptimized(fn object.Object) {
 		}
 		newVM.frames[0] = NewFrame(fn, 0)
 		defer func() {
-			recover() // Silent recovery
+			recover() // Silent recovery for spawned goroutines
 		}()
 		newVM.Run()
 	}
