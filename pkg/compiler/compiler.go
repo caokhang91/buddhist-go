@@ -285,32 +285,32 @@ func (c *Compiler) Compile(node ast.Node) error {
 		}
 
 	case *ast.ArrayLiteral:
-		// Check if this is a PHP-style associative array
-		if len(node.Pairs) > 0 {
-			// PHP-style: [key => value, ...] - compile as hash
-			keys := []ast.Expression{}
-			for k := range node.Pairs {
-				keys = append(keys, k)
+		hasKeys := false
+		for _, el := range node.Elements {
+			if el.Key != nil {
+				hasKeys = true
+				break
 			}
-			sort.Slice(keys, func(i, j int) bool {
-				return keys[i].String() < keys[j].String()
-			})
-
-			for _, k := range keys {
-				err := c.Compile(k)
-				if err != nil {
-					return err
-				}
-				err = c.Compile(node.Pairs[k])
-				if err != nil {
-					return err
-				}
-			}
-			c.emit(code.OpHash, len(node.Pairs)*2)
-		} else {
-			// Regular array: [1, 2, 3]
+		}
+		if hasKeys {
 			for _, el := range node.Elements {
-				err := c.Compile(el)
+				if el.Key != nil {
+					err := c.Compile(el.Key)
+					if err != nil {
+						return err
+					}
+				} else {
+					c.emit(code.OpNull)
+				}
+				err := c.Compile(el.Value)
+				if err != nil {
+					return err
+				}
+			}
+			c.emit(code.OpPHPArray, len(node.Elements))
+		} else {
+			for _, el := range node.Elements {
+				err := c.Compile(el.Value)
 				if err != nil {
 					return err
 				}
@@ -340,6 +340,9 @@ func (c *Compiler) Compile(node ast.Node) error {
 		c.emit(code.OpHash, len(node.Pairs)*2)
 
 	case *ast.IndexExpression:
+		if node.Index == nil {
+			return fmt.Errorf("index expression requires index")
+		}
 		err := c.Compile(node.Left)
 		if err != nil {
 			return err
@@ -349,6 +352,29 @@ func (c *Compiler) Compile(node ast.Node) error {
 			return err
 		}
 		c.emit(code.OpIndex)
+
+	case *ast.IndexAssignmentExpression:
+		err := c.Compile(node.Left)
+		if err != nil {
+			return err
+		}
+		if node.Index == nil {
+			err = c.Compile(node.Value)
+			if err != nil {
+				return err
+			}
+			c.emit(code.OpArrayPush)
+		} else {
+			err = c.Compile(node.Index)
+			if err != nil {
+				return err
+			}
+			err = c.Compile(node.Value)
+			if err != nil {
+				return err
+			}
+			c.emit(code.OpSetIndex)
+		}
 
 	case *ast.FunctionLiteral:
 		c.enterScope()

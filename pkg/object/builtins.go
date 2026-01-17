@@ -54,6 +54,8 @@ var Builtins = []BuiltinDef{
 				return &Integer{Value: int64(len(arg.Elements))}
 			case *Blob:
 				return &Integer{Value: int64(len(arg.Data))}
+			case *PHPArray:
+				return &Integer{Value: int64(arg.Length())}
 			default:
 				return newError("argument to `len` not supported, got %s", args[0].Type())
 			}
@@ -83,10 +85,10 @@ var Builtins = []BuiltinDef{
 			if len(args) != 1 {
 				return newError("wrong number of arguments. got=%d, want=1", len(args))
 			}
-			if args[0].Type() != ARRAY_OBJ {
+			arr, ok := coerceArray(args[0])
+			if !ok {
 				return newError("argument to `first` must be ARRAY, got %s", args[0].Type())
 			}
-			arr := args[0].(*Array)
 			if len(arr.Elements) > 0 {
 				return arr.Elements[0]
 			}
@@ -99,10 +101,10 @@ var Builtins = []BuiltinDef{
 			if len(args) != 1 {
 				return newError("wrong number of arguments. got=%d, want=1", len(args))
 			}
-			if args[0].Type() != ARRAY_OBJ {
+			arr, ok := coerceArray(args[0])
+			if !ok {
 				return newError("argument to `last` must be ARRAY, got %s", args[0].Type())
 			}
-			arr := args[0].(*Array)
 			length := len(arr.Elements)
 			if length > 0 {
 				return arr.Elements[length-1]
@@ -116,10 +118,10 @@ var Builtins = []BuiltinDef{
 			if len(args) != 1 {
 				return newError("wrong number of arguments. got=%d, want=1", len(args))
 			}
-			if args[0].Type() != ARRAY_OBJ {
+			arr, ok := coerceArray(args[0])
+			if !ok {
 				return newError("argument to `rest` must be ARRAY, got %s", args[0].Type())
 			}
-			arr := args[0].(*Array)
 			length := len(arr.Elements)
 			if length > 0 {
 				newElements := make([]Object, length-1)
@@ -135,10 +137,10 @@ var Builtins = []BuiltinDef{
 			if len(args) != 2 {
 				return newError("wrong number of arguments. got=%d, want=2", len(args))
 			}
-			if args[0].Type() != ARRAY_OBJ {
+			arr, ok := coerceArray(args[0])
+			if !ok {
 				return newError("argument to `push` must be ARRAY, got %s", args[0].Type())
 			}
-			arr := args[0].(*Array)
 			length := len(arr.Elements)
 			newElements := make([]Object, length+1)
 			copy(newElements, arr.Elements)
@@ -246,10 +248,10 @@ var Builtins = []BuiltinDef{
 			if len(args) < 1 || len(args) > 2 {
 				return newError("wrong number of arguments. got=%d, want=1 or 2", len(args))
 			}
-			if args[0].Type() != ARRAY_OBJ {
+			arr, ok := coerceArray(args[0])
+			if !ok {
 				return newError("first argument to `join` must be ARRAY, got %s", args[0].Type())
 			}
-			arr := args[0].(*Array)
 			sep := ""
 			if len(args) == 2 {
 				if args[1].Type() != STRING_OBJ {
@@ -270,10 +272,10 @@ var Builtins = []BuiltinDef{
 			if len(args) < 1 || len(args) > 3 {
 				return newError("wrong number of arguments. got=%d, want=1 to 3", len(args))
 			}
-			if args[0].Type() != ARRAY_OBJ {
+			arr, ok := coerceArray(args[0])
+			if !ok {
 				return newError("first argument to `slice` must be ARRAY, got %s", args[0].Type())
 			}
-			arr := args[0].(*Array)
 			length := len(arr.Elements)
 			start := 0
 			end := length
@@ -364,10 +366,10 @@ var Builtins = []BuiltinDef{
 			if len(args) != 2 {
 				return newError("wrong number of arguments. got=%d, want=2", len(args))
 			}
-			if args[0].Type() != ARRAY_OBJ {
+			arr, ok := coerceArray(args[0])
+			if !ok {
 				return newError("first argument to `map` must be ARRAY, got %s", args[0].Type())
 			}
-			arr := args[0].(*Array)
 
 			// For builtin map, we need to handle this differently
 			// The second argument should be a builtin function
@@ -404,10 +406,10 @@ var Builtins = []BuiltinDef{
 			if len(args) != 2 {
 				return newError("wrong number of arguments. got=%d, want=2", len(args))
 			}
-			if args[0].Type() != ARRAY_OBJ {
+			arr, ok := coerceArray(args[0])
+			if !ok {
 				return newError("first argument to `filter` must be ARRAY, got %s", args[0].Type())
 			}
-			arr := args[0].(*Array)
 
 			builtin, ok := args[1].(*Builtin)
 			if !ok {
@@ -455,10 +457,10 @@ var Builtins = []BuiltinDef{
 			if len(args) < 2 || len(args) > 3 {
 				return newError("wrong number of arguments. got=%d, want=2 or 3", len(args))
 			}
-			if args[0].Type() != ARRAY_OBJ {
+			arr, ok := coerceArray(args[0])
+			if !ok {
 				return newError("first argument to `reduce` must be ARRAY, got %s", args[0].Type())
 			}
-			arr := args[0].(*Array)
 
 			if len(arr.Elements) == 0 {
 				if len(args) == 3 {
@@ -498,10 +500,10 @@ var Builtins = []BuiltinDef{
 			if len(args) != 1 {
 				return newError("wrong number of arguments. got=%d, want=1", len(args))
 			}
-			if args[0].Type() != ARRAY_OBJ {
+			arr, ok := coerceArray(args[0])
+			if !ok {
 				return newError("argument to `reverse` must be ARRAY, got %s", args[0].Type())
 			}
-			arr := args[0].(*Array)
 			length := len(arr.Elements)
 			newElements := make([]Object, length)
 			for i, el := range arr.Elements {
@@ -518,10 +520,10 @@ var Builtins = []BuiltinDef{
 			}
 			var elements []Object
 			for _, arg := range args {
-				if arg.Type() != ARRAY_OBJ {
+				arr, ok := coerceArray(arg)
+				if !ok {
 					return newError("arguments to `concat` must be ARRAY, got %s", arg.Type())
 				}
-				arr := arg.(*Array)
 				elements = append(elements, arr.Elements...)
 			}
 			return &Array{Elements: elements}
@@ -533,10 +535,10 @@ var Builtins = []BuiltinDef{
 			if len(args) != 2 {
 				return newError("wrong number of arguments. got=%d, want=2", len(args))
 			}
-			if args[0].Type() != ARRAY_OBJ {
+			arr, ok := coerceArray(args[0])
+			if !ok {
 				return newError("first argument to `contains` must be ARRAY, got %s", args[0].Type())
 			}
-			arr := args[0].(*Array)
 			target := args[1]
 
 			for _, el := range arr.Elements {
@@ -553,10 +555,10 @@ var Builtins = []BuiltinDef{
 			if len(args) != 2 {
 				return newError("wrong number of arguments. got=%d, want=2", len(args))
 			}
-			if args[0].Type() != ARRAY_OBJ {
+			arr, ok := coerceArray(args[0])
+			if !ok {
 				return newError("first argument to `indexOf` must be ARRAY, got %s", args[0].Type())
 			}
-			arr := args[0].(*Array)
 			target := args[1]
 
 			for i, el := range arr.Elements {
@@ -573,10 +575,10 @@ var Builtins = []BuiltinDef{
 			if len(args) != 1 {
 				return newError("wrong number of arguments. got=%d, want=1", len(args))
 			}
-			if args[0].Type() != ARRAY_OBJ {
+			arr, ok := coerceArray(args[0])
+			if !ok {
 				return newError("argument to `unique` must be ARRAY, got %s", args[0].Type())
 			}
-			arr := args[0].(*Array)
 			seen := make(map[string]bool)
 			var unique []Object
 
@@ -596,10 +598,10 @@ var Builtins = []BuiltinDef{
 			if len(args) != 1 {
 				return newError("wrong number of arguments. got=%d, want=1", len(args))
 			}
-			if args[0].Type() != ARRAY_OBJ {
+			arr, ok := coerceArray(args[0])
+			if !ok {
 				return newError("argument to `flatten` must be ARRAY, got %s", args[0].Type())
 			}
-			arr := args[0].(*Array)
 			return &Array{Elements: flattenArray(arr)}
 		},
 	},
@@ -609,10 +611,10 @@ var Builtins = []BuiltinDef{
 			if len(args) != 1 {
 				return newError("wrong number of arguments. got=%d, want=1", len(args))
 			}
-			if args[0].Type() != ARRAY_OBJ {
+			arr, ok := coerceArray(args[0])
+			if !ok {
 				return newError("argument to `sum` must be ARRAY, got %s", args[0].Type())
 			}
-			arr := args[0].(*Array)
 
 			var intSum int64
 			var floatSum float64
@@ -642,10 +644,10 @@ var Builtins = []BuiltinDef{
 			if len(args) != 1 {
 				return newError("wrong number of arguments. got=%d, want=1", len(args))
 			}
-			if args[0].Type() != ARRAY_OBJ {
+			arr, ok := coerceArray(args[0])
+			if !ok {
 				return newError("argument to `min` must be ARRAY, got %s", args[0].Type())
 			}
-			arr := args[0].(*Array)
 			if len(arr.Elements) == 0 {
 				return &Null{}
 			}
@@ -665,10 +667,10 @@ var Builtins = []BuiltinDef{
 			if len(args) != 1 {
 				return newError("wrong number of arguments. got=%d, want=1", len(args))
 			}
-			if args[0].Type() != ARRAY_OBJ {
+			arr, ok := coerceArray(args[0])
+			if !ok {
 				return newError("argument to `max` must be ARRAY, got %s", args[0].Type())
 			}
-			arr := args[0].(*Array)
 			if len(arr.Elements) == 0 {
 				return &Null{}
 			}
@@ -688,10 +690,10 @@ var Builtins = []BuiltinDef{
 			if len(args) != 1 {
 				return newError("wrong number of arguments. got=%d, want=1", len(args))
 			}
-			if args[0].Type() != ARRAY_OBJ {
+			arr, ok := coerceArray(args[0])
+			if !ok {
 				return newError("argument to `avg` must be ARRAY, got %s", args[0].Type())
 			}
-			arr := args[0].(*Array)
 			if len(arr.Elements) == 0 {
 				return &Null{}
 			}
@@ -779,6 +781,17 @@ func GetBuiltinByName(name string) *Builtin {
 	return nil
 }
 
+func coerceArray(obj Object) (*Array, bool) {
+	switch arr := obj.(type) {
+	case *Array:
+		return arr, true
+	case *PHPArray:
+		return arr.ToArray(), true
+	default:
+		return nil, false
+	}
+}
+
 func newError(format string, a ...interface{}) *Error {
 	return &Error{Message: fmt.Sprintf(format, a...)}
 }
@@ -798,6 +811,8 @@ func isTruthy(obj Object) bool {
 		return len(o.Elements) > 0
 	case *Blob:
 		return len(o.Data) > 0
+	case *PHPArray:
+		return o.Length() > 0
 	default:
 		return true
 	}

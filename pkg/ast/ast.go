@@ -371,36 +371,32 @@ func (ce *CallExpression) String() string {
 	return out.String()
 }
 
-// ArrayLiteral represents an array literal: [1, 2, 3] or PHP-style [key => value]
+// ArrayElement represents a single array entry, optionally keyed.
+type ArrayElement struct {
+	Key   Expression
+	Value Expression
+}
+
+// ArrayLiteral represents an array literal: [1, 2, 3] or ["a" => 1]
 type ArrayLiteral struct {
 	Token    token.Token // the '[' token
-	Elements []Expression
-	// PHP-style associative array support
-	Pairs map[Expression]Expression // For [key => value, ...] syntax
+	Elements []ArrayElement
 }
 
 func (al *ArrayLiteral) expressionNode()      {}
 func (al *ArrayLiteral) TokenLiteral() string { return al.Token.Literal }
 func (al *ArrayLiteral) String() string {
 	var out bytes.Buffer
-	out.WriteString("[")
-
-	// If we have pairs (PHP-style array)
-	if len(al.Pairs) > 0 {
-		pairs := []string{}
-		for key, value := range al.Pairs {
-			pairs = append(pairs, key.String()+" => "+value.String())
+	elements := []string{}
+	for _, el := range al.Elements {
+		if el.Key != nil {
+			elements = append(elements, el.Key.String()+" => "+el.Value.String())
+		} else {
+			elements = append(elements, el.Value.String())
 		}
-		out.WriteString(strings.Join(pairs, ", "))
-	} else {
-		// Regular array
-		elements := []string{}
-		for _, el := range al.Elements {
-			elements = append(elements, el.String())
-		}
-		out.WriteString(strings.Join(elements, ", "))
 	}
-
+	out.WriteString("[")
+	out.WriteString(strings.Join(elements, ", "))
 	out.WriteString("]")
 	return out.String()
 }
@@ -419,7 +415,9 @@ func (ie *IndexExpression) String() string {
 	out.WriteString("(")
 	out.WriteString(ie.Left.String())
 	out.WriteString("[")
-	out.WriteString(ie.Index.String())
+	if ie.Index != nil {
+		out.WriteString(ie.Index.String())
+	}
 	out.WriteString("])")
 	return out.String()
 }
@@ -514,6 +512,28 @@ func (ae *AssignmentExpression) String() string {
 	out.WriteString(ae.Name.String())
 	out.WriteString(" = ")
 	out.WriteString(ae.Value.String())
+	return out.String()
+}
+
+// IndexAssignmentExpression represents an assignment to an index: arr[0] = 1
+type IndexAssignmentExpression struct {
+	Token token.Token
+	Left  Expression
+	Index Expression
+	Value Expression
+}
+
+func (iae *IndexAssignmentExpression) expressionNode()      {}
+func (iae *IndexAssignmentExpression) TokenLiteral() string { return iae.Token.Literal }
+func (iae *IndexAssignmentExpression) String() string {
+	var out bytes.Buffer
+	out.WriteString(iae.Left.String())
+	out.WriteString("[")
+	if iae.Index != nil {
+		out.WriteString(iae.Index.String())
+	}
+	out.WriteString("] = ")
+	out.WriteString(iae.Value.String())
 	return out.String()
 }
 

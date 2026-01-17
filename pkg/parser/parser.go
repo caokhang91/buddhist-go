@@ -619,64 +619,59 @@ func (p *Parser) parseExpressionList(end token.TokenType) []ast.Expression {
 
 func (p *Parser) parseArrayLiteral() ast.Expression {
 	array := &ast.ArrayLiteral{Token: p.curToken}
+	array.Elements = []ast.ArrayElement{}
 
-	// Check if it's empty array
 	if p.peekTokenIs(token.RBRACKET) {
 		p.nextToken()
 		return array
 	}
 
-	// Parse first element to determine array type
 	p.nextToken()
-	firstExpr := p.parseExpression(LOWEST)
+	for !p.curTokenIs(token.RBRACKET) && !p.curTokenIs(token.EOF) {
+		keyOrValue := p.parseExpression(LOWEST)
+		if keyOrValue == nil {
+			return nil
+		}
 
-	// Check if this is a PHP-style associative array with =>
-	if p.peekTokenIs(token.ARROW) {
-		// PHP-style associative array: [key => value, ...]
-		array.Pairs = make(map[ast.Expression]ast.Expression)
-
-		p.nextToken() // consume =>
-		p.nextToken()
-		value := p.parseExpression(LOWEST)
-		array.Pairs[firstExpr] = value
-
-		for p.peekTokenIs(token.COMMA) {
-			p.nextToken() // consume comma
+		if p.peekTokenIs(token.ARROW) {
 			p.nextToken()
-			key := p.parseExpression(LOWEST)
-
-			if !p.expectPeek(token.ARROW) {
-				return nil
-			}
-
 			p.nextToken()
 			value := p.parseExpression(LOWEST)
-			array.Pairs[key] = value
+			if value == nil {
+				return nil
+			}
+			array.Elements = append(array.Elements, ast.ArrayElement{Key: keyOrValue, Value: value})
+		} else {
+			array.Elements = append(array.Elements, ast.ArrayElement{Value: keyOrValue})
+		}
+
+		if p.peekTokenIs(token.COMMA) {
+			p.nextToken()
+			p.nextToken()
+			continue
+		}
+
+		if p.peekTokenIs(token.RBRACKET) {
+			p.nextToken()
+			break
 		}
 
 		if !p.expectPeek(token.RBRACKET) {
 			return nil
 		}
-	} else {
-		// Regular array: [1, 2, 3]
-		array.Elements = append(array.Elements, firstExpr)
-
-		for p.peekTokenIs(token.COMMA) {
-			p.nextToken()
-			p.nextToken()
-			array.Elements = append(array.Elements, p.parseExpression(LOWEST))
-		}
-
-		if !p.expectPeek(token.RBRACKET) {
-			return nil
-		}
+		break
 	}
-
 	return array
 }
 
 func (p *Parser) parseIndexExpression(left ast.Expression) ast.Expression {
 	exp := &ast.IndexExpression{Token: p.curToken, Left: left}
+
+	if p.peekTokenIs(token.RBRACKET) {
+		p.nextToken()
+		exp.Index = nil
+		return exp
+	}
 
 	p.nextToken()
 	exp.Index = p.parseExpression(LOWEST)
@@ -753,19 +748,33 @@ func (p *Parser) parseReceiveExpression() ast.Expression {
 
 func (p *Parser) parseAssignmentExpression(left ast.Expression) ast.Expression {
 	ident, ok := left.(*ast.Identifier)
-	if !ok {
-		msg := fmt.Sprintf("line %d: cannot assign to %s", p.curToken.Line, left.String())
-		p.errors = append(p.errors, msg)
-		return nil
+	if ok {
+		exp := &ast.AssignmentExpression{
+			Token: p.curToken,
+			Name:  ident,
+		}
+
+		p.nextToken()
+		exp.Value = p.parseExpression(LOWEST)
+
+		return exp
 	}
 
-	exp := &ast.AssignmentExpression{
-		Token: p.curToken,
-		Name:  ident,
+	indexExp, ok := left.(*ast.IndexExpression)
+	if ok {
+		exp := &ast.IndexAssignmentExpression{
+			Token: p.curToken,
+			Left:  indexExp.Left,
+			Index: indexExp.Index,
+		}
+
+		p.nextToken()
+		exp.Value = p.parseExpression(LOWEST)
+
+		return exp
 	}
 
-	p.nextToken()
-	exp.Value = p.parseExpression(LOWEST)
-
-	return exp
+	msg := fmt.Sprintf("line %d: cannot assign to %s", p.curToken.Line, left.String())
+	p.errors = append(p.errors, msg)
+	return nil
 }

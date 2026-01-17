@@ -260,6 +260,21 @@ func (vm *VM) Run() error {
 				return err
 			}
 
+		case code.OpPHPArray:
+			numElements := int(code.ReadUint16(ins[ip+1:]))
+			vm.currentFrame().ip += 2
+
+			phpArray, err := vm.buildPHPArray(vm.sp-numElements*2, vm.sp, numElements)
+			if err != nil {
+				return err
+			}
+			vm.sp = vm.sp - numElements*2
+
+			err = vm.push(phpArray)
+			if err != nil {
+				return err
+			}
+
 		case code.OpIndex:
 			index := vm.pop()
 			left := vm.pop()
@@ -703,7 +718,33 @@ func (vm *VM) buildHash(startIndex, endIndex int) (object.Object, error) {
 	return &object.Hash{Pairs: hashedPairs}, nil
 }
 
+func (vm *VM) buildPHPArray(startIndex, endIndex, numElements int) (object.Object, error) {
+	if endIndex-startIndex != numElements*2 {
+		return nil, fmt.Errorf("invalid PHP array element count")
+	}
+
+	phpArray := object.NewPHPArray()
+	for i := 0; i < numElements; i++ {
+		key := vm.stack[startIndex+i*2]
+		value := vm.stack[startIndex+i*2+1]
+		if _, ok := key.(*object.Null); ok {
+			phpArray.Push(value)
+		} else {
+			phpArray.Set(key, value)
+		}
+	}
+
+	return phpArray, nil
+}
+
 func (vm *VM) executeIndexExpression(left, index object.Object) error {
+	if phpArray, ok := left.(*object.PHPArray); ok {
+		value, ok := phpArray.Get(index)
+		if !ok {
+			return vm.push(Null)
+		}
+		return vm.push(value)
+	}
 	switch {
 	case left.Type() == object.ARRAY_OBJ && index.Type() == object.INTEGER_OBJ:
 		return vm.executeArrayIndex(left, index)
@@ -893,17 +934,17 @@ func (vm *VM) executeSetIndex(left, index, value object.Object) error {
 		} else {
 			obj.Elements[i] = value
 		}
-		return vm.push(obj)
+		return vm.push(value)
 	case *object.PHPArray:
 		obj.Set(index, value)
-		return vm.push(obj)
+		return vm.push(value)
 	case *object.Hash:
 		hashKey, ok := index.(object.Hashable)
 		if !ok {
 			return fmt.Errorf("unusable as hash key: %s", index.Type())
 		}
 		obj.Pairs[hashKey.HashKey()] = object.HashPair{Key: index, Value: value}
-		return vm.push(obj)
+		return vm.push(value)
 	default:
 		return fmt.Errorf("index assignment not supported: %s", left.Type())
 	}
@@ -914,10 +955,10 @@ func (vm *VM) executeArrayPush(arr, value object.Object) error {
 	switch obj := arr.(type) {
 	case *object.Array:
 		obj.Elements = append(obj.Elements, value)
-		return vm.push(obj)
+		return vm.push(value)
 	case *object.PHPArray:
 		obj.Push(value)
-		return vm.push(obj)
+		return vm.push(value)
 	default:
 		return fmt.Errorf("cannot push to non-array: %s", arr.Type())
 	}

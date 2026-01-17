@@ -244,7 +244,7 @@ func (p *PHPArray) Inspect() string {
 	var out bytes.Buffer
 	pairs := []string{}
 	for _, entry := range p.Entries {
-		pairs = append(pairs, fmt.Sprintf("%s: %s", entry.Key.Inspect(), entry.Value.Inspect()))
+		pairs = append(pairs, fmt.Sprintf("%s => %s", entry.Key.Inspect(), entry.Value.Inspect()))
 	}
 	out.WriteString("[")
 	out.WriteString(strings.Join(pairs, ", "))
