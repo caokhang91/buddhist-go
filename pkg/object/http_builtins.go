@@ -8,6 +8,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/caokhang91/buddhist-go/pkg/tracing"
 )
 
 func httpRequestBuiltin(args ...Object) Object {
@@ -96,16 +98,42 @@ func httpRequestBuiltinWithName(fnName string, args ...Object) Object {
 		client.Timeout = time.Duration(timeoutValue) * time.Millisecond
 	}
 
+	// Network I/O tracing
+	tracing.TraceNetwork("Sending HTTP %s request to: %s", method, urlValue)
+	if headersObj, ok := getHashValue(config, "headers"); ok {
+		if headersHash, ok := headersObj.(*Hash); ok {
+			headers, _ := hashToStringMap(headersHash, fnName, "headers")
+			if len(headers) > 0 {
+				tracing.TraceNetwork("Request headers: %v", headers)
+			}
+		}
+	}
+	if bodyReader != nil {
+		tracing.TraceNetwork("Request body present")
+	}
+
+	networkStart := time.Now()
 	resp, err := client.Do(req)
+	networkDuration := time.Since(networkStart)
+	
 	if err != nil {
+		tracing.TraceNetwork("Request failed: %s", err.Error())
 		return newError("%s failed: %s", fnName, err.Error())
 	}
 	defer resp.Body.Close()
 
+	tracing.TraceNetwork("Received response: status=%d, duration=%v", resp.StatusCode, networkDuration)
+
+	readStart := time.Now()
 	body, err := io.ReadAll(resp.Body)
+	readDuration := time.Since(readStart)
 	if err != nil {
+		tracing.TraceNetwork("Failed to read response body: %s", err.Error())
 		return newError("%s failed: %s", fnName, err.Error())
 	}
+
+	tracing.TraceNetwork("Read response body: %d bytes, duration=%v", len(body), readDuration)
+	tracing.TraceNetwork("Total network I/O time: %v", networkDuration+readDuration)
 
 	response := newStringHash(map[string]Object{
 		"status":  &Integer{Value: int64(resp.StatusCode)},

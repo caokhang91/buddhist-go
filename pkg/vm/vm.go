@@ -3,10 +3,12 @@ package vm
 import (
 	"fmt"
 	"sync"
+	"time"
 
 	"github.com/caokhang91/buddhist-go/pkg/code"
 	"github.com/caokhang91/buddhist-go/pkg/compiler"
 	"github.com/caokhang91/buddhist-go/pkg/object"
+	"github.com/caokhang91/buddhist-go/pkg/tracing"
 )
 
 const StackSize = 2048
@@ -738,6 +740,11 @@ func (vm *VM) buildPHPArray(startIndex, endIndex, numElements int) (object.Objec
 }
 
 func (vm *VM) executeIndexExpression(left, index object.Object) error {
+	// Check if left operand is an ERROR object
+	if errObj, ok := left.(*object.Error); ok {
+		return fmt.Errorf("cannot index error object: %s", errObj.Message)
+	}
+	
 	if phpArray, ok := left.(*object.PHPArray); ok {
 		value, ok := phpArray.Get(index)
 		if !ok {
@@ -825,7 +832,15 @@ func (vm *VM) callClosure(cl *object.Closure, numArgs int) error {
 func (vm *VM) callBuiltin(builtin *object.Builtin, numArgs int) error {
 	args := vm.stack[vm.sp-numArgs : vm.sp]
 
+	// Trace builtin calls
+	tracing.TraceCPU("Calling builtin: %s with %d arguments", builtin.Name, numArgs)
+	builtinStart := time.Now()
+	
 	result := builtin.Fn(args...)
+	
+	builtinDuration := time.Since(builtinStart)
+	tracing.TraceCPU("Builtin %s completed in %v", builtin.Name, builtinDuration)
+	
 	vm.sp = vm.sp - numArgs - 1
 
 	if result != nil {

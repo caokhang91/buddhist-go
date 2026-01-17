@@ -1,0 +1,51 @@
+<idea-plugin>
+    <id>com.buddhist.lang</id>
+    <name>Buddhist Language</name>
+    <version>1.0.0</version>
+    <vendor email="support@buddhist-lang.com" url="https://github.com/caokhang91/buddhist-go">Buddhist Lang</vendor>
+
+    <description><![CDATA[
+    IntelliJ IDEA plugin for Buddhist Language (.bl files).
+    Provides syntax highlighting, code completion, and basic language support.
+    ]]></description>
+
+    <change-notes><![CDATA[
+    Initial release with syntax highlighting and basic language support.
+    ]]></change-notes>
+
+    <!-- Plugin compatibility -->
+    <idea-version since-build="203.0" until-build="232.*"/>
+
+    <!-- Plugin dependencies -->
+    <depends>com.intellij.modules.platform</depends>
+    <depends>com.intellij.modules.lang</depends>
+
+    <extensions defaultExtensionNs="com.intellij">
+        <!-- File Type -->
+        <fileType name="Buddhist Language" implementationClass="com.buddhist.lang.BuddhistFileType" 
+                  fieldName="INSTANCE" language="BuddhistLanguage" extensions="bl"/>
+
+        <!-- Language -->
+        <lang.parserDefinition language="BuddhistLanguage" 
+                               implementationClass="com.buddhist.lang.parser.BuddhistParserDefinition"/>
+
+        <!-- Syntax Highlighter -->
+        <lang.syntaxHighlighterFactory language="BuddhistLanguage" 
+                                       implementationClass="com.buddhist.lang.highlighting.BuddhistSyntaxHighlighterFactory"/>
+
+        <!-- Color Settings -->
+        <colorSettingsPage implementation="com.buddhist.lang.highlighting.BuddhistColorSettingsPage"/>
+
+        <!-- Brace Matcher -->
+        <lang.braceMatcher language="BuddhistLanguage" 
+                          implementationClass="com.buddhist.lang.BuddhistBraceMatcher"/>
+
+        <!-- Commenter -->
+        <lang.commenter language="BuddhistLanguage" 
+                       implementationClass="com.buddhist.lang.BuddhistCommenter"/>
+    </extensions>
+
+    <actions>
+        <!-- Add actions here if needed -->
+    </actions>
+</idea-plugin>

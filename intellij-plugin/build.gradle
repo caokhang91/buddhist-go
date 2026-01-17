@@ -1,0 +1,51 @@
+plugins {
+    id 'java'
+    id 'org.jetbrains.intellij' version '1.15.0'
+    id 'org.jetbrains.kotlin.jvm' version '1.9.0'
+}
+
+group 'com.buddhist.lang'
+version '1.0.0'
+
+repositories {
+    mavenCentral()
+}
+
+dependencies {
+    implementation 'org.jetbrains.kotlin:kotlin-stdlib-jdk8'
+}
+
+// See https://github.com/JetBrains/gradle-intellij-plugin/
+intellij {
+    version = '2023.1'
+    type = 'IC' // IntelliJ IDEA Community Edition
+    plugins = []
+}
+
+tasks {
+    patchPluginXml {
+        sinceBuild.set("203")
+        untilBuild.set("232.*")
+    }
+
+    compileJava {
+        sourceCompatibility = '17'
+        targetCompatibility = '17'
+    }
+
+    compileKotlin {
+        kotlinOptions.jvmTarget = "17"
+    }
+}
+
+// Note: Using BuddhistLexerSimple which doesn't require JFlex
+// If you want to use JFlex-based lexer, uncomment below and install JFlex:
+// task generateLexer(type: Exec) {
+//     workingDir = projectDir
+//     commandLine = ['jflex', '-d', 'src/main/java/com/buddhist/lang/lexer', 
+//                    'src/main/java/com/buddhist/lang/lexer/_BuddhistLexer.flex']
+//     doFirst {
+//         println "Generating lexer from _BuddhistLexer.flex"
+//     }
+// }
+// compileJava.dependsOn generateLexer

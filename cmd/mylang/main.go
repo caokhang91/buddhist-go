@@ -11,6 +11,7 @@ import (
 	"github.com/caokhang91/buddhist-go/pkg/lexer"
 	"github.com/caokhang91/buddhist-go/pkg/object"
 	"github.com/caokhang91/buddhist-go/pkg/parser"
+	"github.com/caokhang91/buddhist-go/pkg/tracing"
 	"github.com/caokhang91/buddhist-go/pkg/vm"
 )
 
@@ -33,19 +34,34 @@ const BANNER = `
 func main() {
 	args := os.Args[1:]
 
-	if len(args) == 0 {
+	// Tracing is enabled by default, check for flags to disable
+	filteredArgs := []string{}
+	for _, arg := range args {
+		if arg == "--quiet" || arg == "--no-verbose" || arg == "-q" {
+			tracing.Disable()
+		} else if arg == "--verbose" || arg == "--trace" || arg == "-t" {
+			// Explicitly enable (already enabled by default, but keep for compatibility)
+			tracing.Enable()
+		} else if arg == "-h" || arg == "--help" {
+			printHelp()
+			return
+		} else if arg == "-v" || arg == "--version" {
+			fmt.Printf("Buddhist Lang version %s\n", VERSION)
+			return
+		} else {
+			filteredArgs = append(filteredArgs, arg)
+		}
+	}
+
+	if len(filteredArgs) == 0 {
 		// Start REPL
 		fmt.Printf(BANNER, VERSION)
 		fmt.Println("\nType 'help' for commands, 'exit' to quit.")
 		fmt.Println()
 		startREPL(os.Stdin, os.Stdout)
-	} else if args[0] == "-h" || args[0] == "--help" {
-		printHelp()
-	} else if args[0] == "-v" || args[0] == "--version" {
-		fmt.Printf("Buddhist Lang version %s\n", VERSION)
 	} else {
 		// Execute file
-		filename := args[0]
+		filename := filteredArgs[0]
 		if err := executeFile(filename); err != nil {
 			fmt.Fprintf(os.Stderr, "Error: %s\n", err)
 			os.Exit(1)
@@ -56,10 +72,15 @@ func main() {
 func printHelp() {
 	fmt.Printf("Buddhist Lang - Go-Powered Interpreter Language (v%s)\n\n", VERSION)
 	fmt.Println("Usage:")
-	fmt.Println("  mylang              Start the interactive REPL")
-	fmt.Println("  mylang <file>       Execute a script file")
-	fmt.Println("  mylang -h, --help   Show this help message")
-	fmt.Println("  mylang -v, --version Show version information")
+	fmt.Println("  mylang                    Start the interactive REPL")
+	fmt.Println("  mylang <file>             Execute a script file (with verbose tracing by default)")
+	fmt.Println("  mylang --quiet <file>     Execute without verbose tracing")
+	fmt.Println("  mylang -h, --help         Show this help message")
+	fmt.Println("  mylang -v, --version      Show version information")
+	fmt.Println()
+	fmt.Println("Options:")
+	fmt.Println("  --quiet, --no-verbose, -q Disable detailed tracing (default: enabled)")
+	fmt.Println("  --verbose, --trace, -t    Explicitly enable detailed tracing (default: already enabled)")
 	fmt.Println()
 	fmt.Println("REPL Commands:")
 	fmt.Println("  help     Show available commands")
@@ -87,9 +108,16 @@ func executeFile(filename string) error {
 }
 
 func execute(input string) error {
+	// Lexing
+	lexDone := tracing.TraceStart("Lexing")
 	l := lexer.New(input)
+	lexDone()
+
+	// Parsing
+	parseDone := tracing.TraceStart("Parsing")
 	p := parser.New(l)
 	program := p.ParseProgram()
+	parseDone()
 
 	if len(p.Errors()) != 0 {
 		for _, err := range p.Errors() {
@@ -98,14 +126,20 @@ func execute(input string) error {
 		return fmt.Errorf("parsing failed")
 	}
 
+	// Compilation
+	compileDone := tracing.TraceStart("Compilation")
 	comp := compiler.New()
 	err := comp.Compile(program)
+	compileDone()
 	if err != nil {
 		return fmt.Errorf("compilation error: %w", err)
 	}
 
+	// VM Execution
+	vmDone := tracing.TraceStart("VM Execution")
 	machine := vm.New(comp.Bytecode())
 	err = machine.Run()
+	vmDone()
 	if err != nil {
 		return fmt.Errorf("runtime error: %w", err)
 	}
