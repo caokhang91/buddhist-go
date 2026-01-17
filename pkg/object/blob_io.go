@@ -31,7 +31,7 @@ func NewBlobFromFile(path string) (*Blob, error) {
 	if size == 0 {
 		return blob, nil
 	}
-	if _, err := io.ReadFull(file, blob.Data); err != nil {
+	if err := readExact(file, blob.Data); err != nil {
 		_ = blob.Release()
 		return nil, err
 	}
@@ -44,4 +44,28 @@ func (b *Blob) WriteToFile(path string) error {
 		return errors.New("blob is nil")
 	}
 	return os.WriteFile(path, b.Data, 0644)
+}
+
+func readExact(r io.Reader, buf []byte) error {
+	if len(buf) == 0 {
+		return nil
+	}
+	offset := 0
+	for offset < len(buf) {
+		n, err := r.Read(buf[offset:])
+		offset += n
+		if offset >= len(buf) {
+			return nil
+		}
+		if err != nil {
+			if errors.Is(err, io.EOF) {
+				return io.ErrUnexpectedEOF
+			}
+			return err
+		}
+		if n == 0 {
+			return io.ErrNoProgress
+		}
+	}
+	return nil
 }
