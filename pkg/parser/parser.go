@@ -42,7 +42,7 @@ var precedences = map[token.TokenType]int{
 	token.OR:       OR,
 	token.LPAREN:   CALL,
 	token.LBRACKET: INDEX,
-	token.SEND:     LOWEST,
+	token.SEND:     ASSIGN, // Channel send should have same precedence as assignment
 }
 
 type (
@@ -88,6 +88,7 @@ func New(l lexer.TokenLexer) *Parser {
 	p.registerPrefix(token.SPAWN, p.parseSpawnExpression)
 	p.registerPrefix(token.CHANNEL, p.parseChannelExpression)
 	p.registerPrefix(token.SEND, p.parseReceiveExpression)
+	p.registerPrefix(token.LT, p.parseReceiveExpression) // Support < as prefix for channel receive
 
 	p.infixParseFns = make(map[token.TokenType]infixParseFn)
 	p.registerInfix(token.PLUS, p.parseInfixExpression)

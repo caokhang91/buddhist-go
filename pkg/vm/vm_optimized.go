@@ -487,6 +487,9 @@ func (vm *OptimizedVM) Run() error {
 			fn := vm.stack[vm.sp-1]
 			vm.sp--
 			go vm.executeSpawnOptimized(fn)
+			// Push null so that expression statement pop works
+			vm.stack[vm.sp] = Null
+			vm.sp++
 
 		case code.OpChannel:
 			channel := &object.Channel{Chan: make(chan object.Object)}

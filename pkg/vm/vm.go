@@ -353,6 +353,11 @@ func (vm *VM) Run() error {
 		case code.OpSpawn:
 			fn := vm.pop()
 			go vm.executeSpawn(fn)
+			// Push null so that expression statement pop works
+			err := vm.push(Null)
+			if err != nil {
+				return err
+			}
 
 		case code.OpChannel:
 			channel := &object.Channel{Chan: make(chan object.Object)}
