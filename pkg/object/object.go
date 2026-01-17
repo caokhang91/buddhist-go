@@ -184,6 +184,159 @@ func (a *Array) Inspect() string {
 	return out.String()
 }
 
+// Copy creates a shallow copy of the array
+func (a *Array) Copy() *Array {
+	newElements := make([]Object, len(a.Elements))
+	copy(newElements, a.Elements)
+	return &Array{Elements: newElements}
+}
+
+// Slice returns a slice of the array from start to end (exclusive)
+func (a *Array) Slice(start, end int) *Array {
+	length := len(a.Elements)
+	if start < 0 {
+		start = length + start
+	}
+	if end < 0 {
+		end = length + end
+	}
+	if start < 0 {
+		start = 0
+	}
+	if end > length {
+		end = length
+	}
+	if start >= end {
+		return &Array{Elements: []Object{}}
+	}
+	newElements := make([]Object, end-start)
+	copy(newElements, a.Elements[start:end])
+	return &Array{Elements: newElements}
+}
+
+// MapEntry represents a key-value pair in a PHPArray
+type MapEntry struct {
+	Key   Object
+	Value Object
+}
+
+// PHPArray represents a PHP-style array (ordered hash map)
+// It maintains insertion order while providing O(1) key lookup
+type PHPArray struct {
+	Entries    []MapEntry
+	Indices    map[interface{}]int
+	NextIntKey int64 // Auto-increment key for push operations
+}
+
+// NewPHPArray creates a new PHP-style array
+func NewPHPArray() *PHPArray {
+	return &PHPArray{
+		Entries:    []MapEntry{},
+		Indices:    make(map[interface{}]int),
+		NextIntKey: 0,
+	}
+}
+
+func (p *PHPArray) Type() ObjectType { return ARRAY_OBJ }
+func (p *PHPArray) Inspect() string {
+	var out bytes.Buffer
+	pairs := []string{}
+	for _, entry := range p.Entries {
+		pairs = append(pairs, fmt.Sprintf("%s: %s", entry.Key.Inspect(), entry.Value.Inspect()))
+	}
+	out.WriteString("[")
+	out.WriteString(strings.Join(pairs, ", "))
+	out.WriteString("]")
+	return out.String()
+}
+
+// getHashKey returns a hashable key for map lookup
+func (p *PHPArray) getHashKey(key Object) interface{} {
+	switch k := key.(type) {
+	case *Integer:
+		return k.Value
+	case *String:
+		return k.Value
+	case *Boolean:
+		if k.Value {
+			return int64(1)
+		}
+		return int64(0)
+	default:
+		return key.Inspect()
+	}
+}
+
+// Set sets a value at the given key
+func (p *PHPArray) Set(key Object, value Object) {
+	hashKey := p.getHashKey(key)
+
+	// Update NextIntKey if key is an integer
+	if intKey, ok := key.(*Integer); ok {
+		if intKey.Value >= p.NextIntKey {
+			p.NextIntKey = intKey.Value + 1
+		}
+	}
+
+	if idx, exists := p.Indices[hashKey]; exists {
+		// Update existing entry
+		p.Entries[idx].Value = value
+	} else {
+		// Add new entry
+		p.Entries = append(p.Entries, MapEntry{Key: key, Value: value})
+		p.Indices[hashKey] = len(p.Entries) - 1
+	}
+}
+
+// Get retrieves a value by key
+func (p *PHPArray) Get(key Object) (Object, bool) {
+	hashKey := p.getHashKey(key)
+	if idx, exists := p.Indices[hashKey]; exists {
+		return p.Entries[idx].Value, true
+	}
+	return nil, false
+}
+
+// Push appends a value with auto-incrementing integer key
+func (p *PHPArray) Push(value Object) {
+	key := &Integer{Value: p.NextIntKey}
+	p.NextIntKey++
+	p.Entries = append(p.Entries, MapEntry{Key: key, Value: value})
+	p.Indices[key.Value] = len(p.Entries) - 1
+}
+
+// Length returns the number of entries
+func (p *PHPArray) Length() int {
+	return len(p.Entries)
+}
+
+// ToArray converts PHPArray to regular Array (values only)
+func (p *PHPArray) ToArray() *Array {
+	elements := make([]Object, len(p.Entries))
+	for i, entry := range p.Entries {
+		elements[i] = entry.Value
+	}
+	return &Array{Elements: elements}
+}
+
+// Keys returns all keys as an array
+func (p *PHPArray) Keys() *Array {
+	keys := make([]Object, len(p.Entries))
+	for i, entry := range p.Entries {
+		keys[i] = entry.Key
+	}
+	return &Array{Elements: keys}
+}
+
+// Values returns all values as an array
+func (p *PHPArray) Values() *Array {
+	values := make([]Object, len(p.Entries))
+	for i, entry := range p.Entries {
+		values[i] = entry.Value
+	}
+	return &Array{Elements: values}
+}
+
 // HashPair represents a key-value pair in a hash
 type HashPair struct {
 	Key   Object

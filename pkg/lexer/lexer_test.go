@@ -202,7 +202,7 @@ func TestFloat(t *testing.T) {
 }
 
 func TestOperators(t *testing.T) {
-	input := "+-*/%<>!==!=="
+	input := "+-*/%<>!= == !="
 	l := New(input)
 
 	tests := []struct {
