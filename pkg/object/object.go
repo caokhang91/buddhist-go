@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"hash/fnv"
 	"strings"
+	"sync"
 
 	"github.com/caokhang91/buddhist-go/pkg/ast"
 )
@@ -30,6 +31,7 @@ const (
 	CONTINUE_OBJ     ObjectType = "CONTINUE"
 	CLASS_OBJ        ObjectType = "CLASS"
 	INSTANCE_OBJ     ObjectType = "INSTANCE"
+	BLOB_OBJ         ObjectType = "BLOB"
 )
 
 // Object interface represents all objects in the language
@@ -182,6 +184,327 @@ func (a *Array) Inspect() string {
 	out.WriteString(strings.Join(elements, ", "))
 	out.WriteString("]")
 	return out.String()
+}
+
+// Copy creates a shallow copy of the array
+func (a *Array) Copy() *Array {
+	newElements := make([]Object, len(a.Elements))
+	copy(newElements, a.Elements)
+	return &Array{Elements: newElements}
+}
+
+// Slice returns a slice of the array from start to end (exclusive)
+func (a *Array) Slice(start, end int) *Array {
+	length := len(a.Elements)
+	if start < 0 {
+		start = length + start
+	}
+	if end < 0 {
+		end = length + end
+	}
+	if start < 0 {
+		start = 0
+	}
+	if end > length {
+		end = length
+	}
+	if start >= end {
+		return &Array{Elements: []Object{}}
+	}
+	newElements := make([]Object, end-start)
+	copy(newElements, a.Elements[start:end])
+	return &Array{Elements: newElements}
+}
+
+// MapEntry represents a key-value pair in a PHPArray
+type MapEntry struct {
+	Key   Object
+	Value Object
+}
+
+// PHPArray represents a PHP-style array (ordered hash map)
+// It maintains insertion order while providing O(1) key lookup
+type PHPArray struct {
+	Entries    []MapEntry
+	Indices    map[interface{}]int
+	NextIntKey int64 // Auto-increment key for push operations
+}
+
+// NewPHPArray creates a new PHP-style array
+func NewPHPArray() *PHPArray {
+	return &PHPArray{
+		Entries:    []MapEntry{},
+		Indices:    make(map[interface{}]int),
+		NextIntKey: 0,
+	}
+}
+
+func (p *PHPArray) Type() ObjectType { return ARRAY_OBJ }
+func (p *PHPArray) Inspect() string {
+	var out bytes.Buffer
+	pairs := []string{}
+	for _, entry := range p.Entries {
+		pairs = append(pairs, fmt.Sprintf("%s: %s", entry.Key.Inspect(), entry.Value.Inspect()))
+	}
+	out.WriteString("[")
+	out.WriteString(strings.Join(pairs, ", "))
+	out.WriteString("]")
+	return out.String()
+}
+
+// getHashKey returns a hashable key for map lookup
+func (p *PHPArray) getHashKey(key Object) interface{} {
+	switch k := key.(type) {
+	case *Integer:
+		return k.Value
+	case *String:
+		return k.Value
+	case *Boolean:
+		if k.Value {
+			return int64(1)
+		}
+		return int64(0)
+	default:
+		return key.Inspect()
+	}
+}
+
+// Set sets a value at the given key
+func (p *PHPArray) Set(key Object, value Object) {
+	hashKey := p.getHashKey(key)
+
+	// Update NextIntKey if key is an integer
+	if intKey, ok := key.(*Integer); ok {
+		if intKey.Value >= p.NextIntKey {
+			p.NextIntKey = intKey.Value + 1
+		}
+	}
+
+	if idx, exists := p.Indices[hashKey]; exists {
+		// Update existing entry
+		p.Entries[idx].Value = value
+	} else {
+		// Add new entry
+		p.Entries = append(p.Entries, MapEntry{Key: key, Value: value})
+		p.Indices[hashKey] = len(p.Entries) - 1
+	}
+}
+
+// Get retrieves a value by key
+func (p *PHPArray) Get(key Object) (Object, bool) {
+	hashKey := p.getHashKey(key)
+	if idx, exists := p.Indices[hashKey]; exists {
+		return p.Entries[idx].Value, true
+	}
+	return nil, false
+}
+
+// Push appends a value with auto-incrementing integer key
+func (p *PHPArray) Push(value Object) {
+	key := &Integer{Value: p.NextIntKey}
+	p.NextIntKey++
+	p.Entries = append(p.Entries, MapEntry{Key: key, Value: value})
+	p.Indices[key.Value] = len(p.Entries) - 1
+}
+
+// Length returns the number of entries
+func (p *PHPArray) Length() int {
+	return len(p.Entries)
+}
+
+// ToArray converts PHPArray to regular Array (values only)
+func (p *PHPArray) ToArray() *Array {
+	elements := make([]Object, len(p.Entries))
+	for i, entry := range p.Entries {
+		elements[i] = entry.Value
+	}
+	return &Array{Elements: elements}
+}
+
+// Keys returns all keys as an array
+func (p *PHPArray) Keys() *Array {
+	keys := make([]Object, len(p.Entries))
+	for i, entry := range p.Entries {
+		keys[i] = entry.Key
+	}
+	return &Array{Elements: keys}
+}
+
+// Values returns all values as an array
+func (p *PHPArray) Values() *Array {
+	values := make([]Object, len(p.Entries))
+	for i, entry := range p.Entries {
+		values[i] = entry.Value
+	}
+	return &Array{Elements: values}
+}
+
+// Copy creates a deep copy of PHPArray
+func (p *PHPArray) Copy() *PHPArray {
+	newArr := NewPHPArray()
+	newArr.NextIntKey = p.NextIntKey
+	for _, entry := range p.Entries {
+		newArr.Set(entry.Key, entry.Value)
+	}
+	return newArr
+}
+
+// Delete removes an entry by key
+func (p *PHPArray) Delete(key Object) bool {
+	hashKey := p.getHashKey(key)
+	idx, exists := p.Indices[hashKey]
+	if !exists {
+		return false
+	}
+
+	// Remove from entries
+	p.Entries = append(p.Entries[:idx], p.Entries[idx+1:]...)
+
+	// Rebuild indices
+	delete(p.Indices, hashKey)
+	for i := idx; i < len(p.Entries); i++ {
+		hk := p.getHashKey(p.Entries[i].Key)
+		p.Indices[hk] = i
+	}
+
+	return true
+}
+
+// WorkerFunc is a function type for parallel operations
+type WorkerFunc func(Object) Object
+
+// ParallelMap applies a worker function to all values in parallel
+// Uses Go's concurrency for large arrays (threshold: 1000 elements)
+func (p *PHPArray) ParallelMap(worker WorkerFunc) *PHPArray {
+	newArr := NewPHPArray()
+	length := len(p.Entries)
+
+	if length == 0 {
+		return newArr
+	}
+
+	// Parallel processing threshold
+	const threshold = 1000
+
+	if length > threshold {
+		// Parallel processing for large arrays
+		type result struct {
+			key   Object
+			value Object
+			order int
+		}
+		results := make(chan result, length)
+		var wg sync.WaitGroup
+
+		for i, entry := range p.Entries {
+			wg.Add(1)
+			go func(idx int, k, v Object) {
+				defer wg.Done()
+				results <- result{
+					key:   k,
+					value: worker(v),
+					order: idx,
+				}
+			}(i, entry.Key, entry.Value)
+		}
+
+		go func() {
+			wg.Wait()
+			close(results)
+		}()
+
+		// Collect results maintaining order
+		orderedResults := make([]result, length)
+		for res := range results {
+			orderedResults[res.order] = res
+		}
+
+		// Build new array in original order
+		for _, res := range orderedResults {
+			newArr.Set(res.key, res.value)
+		}
+	} else {
+		// Sequential processing for small arrays
+		for _, entry := range p.Entries {
+			newArr.Set(entry.Key, worker(entry.Value))
+		}
+	}
+
+	return newArr
+}
+
+// FilterFunc is a function type for filter operations
+type FilterFunc func(Object) bool
+
+// ParallelFilter filters values in parallel using a predicate
+func (p *PHPArray) ParallelFilter(predicate FilterFunc) *PHPArray {
+	newArr := NewPHPArray()
+	length := len(p.Entries)
+
+	if length == 0 {
+		return newArr
+	}
+
+	const threshold = 1000
+
+	if length > threshold {
+		// Parallel processing
+		type filterResult struct {
+			entry MapEntry
+			keep  bool
+			order int
+		}
+		results := make(chan filterResult, length)
+		var wg sync.WaitGroup
+
+		for i, entry := range p.Entries {
+			wg.Add(1)
+			go func(idx int, e MapEntry) {
+				defer wg.Done()
+				results <- filterResult{
+					entry: e,
+					keep:  predicate(e.Value),
+					order: idx,
+				}
+			}(i, entry)
+		}
+
+		go func() {
+			wg.Wait()
+			close(results)
+		}()
+
+		// Collect and sort by order
+		orderedResults := make([]filterResult, length)
+		for res := range results {
+			orderedResults[res.order] = res
+		}
+
+		// Build filtered array in order
+		for _, res := range orderedResults {
+			if res.keep {
+				newArr.Set(res.entry.Key, res.entry.Value)
+			}
+		}
+	} else {
+		// Sequential processing
+		for _, entry := range p.Entries {
+			if predicate(entry.Value) {
+				newArr.Set(entry.Key, entry.Value)
+			}
+		}
+	}
+
+	return newArr
+}
+
+// Reduce reduces the PHPArray to a single value
+func (p *PHPArray) Reduce(fn func(accumulator, current Object) Object, initial Object) Object {
+	acc := initial
+	for _, entry := range p.Entries {
+		acc = fn(acc, entry.Value)
+	}
+	return acc
 }
 
 // HashPair represents a key-value pair in a hash

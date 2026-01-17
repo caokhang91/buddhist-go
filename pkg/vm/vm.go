@@ -406,6 +406,53 @@ func (vm *VM) Run() error {
 
 		case code.OpContinue:
 			return &ContinueSignal{}
+
+		case code.OpSetIndex:
+			value := vm.pop()
+			index := vm.pop()
+			left := vm.pop()
+
+			err := vm.executeSetIndex(left, index, value)
+			if err != nil {
+				return err
+			}
+
+		case code.OpArrayPush:
+			value := vm.pop()
+			arr := vm.pop()
+
+			err := vm.executeArrayPush(arr, value)
+			if err != nil {
+				return err
+			}
+
+		case code.OpSlice:
+			end := vm.pop()
+			start := vm.pop()
+			arr := vm.pop()
+
+			err := vm.executeSlice(arr, start, end)
+			if err != nil {
+				return err
+			}
+
+		case code.OpArrayMap:
+			fn := vm.pop()
+			arr := vm.pop()
+
+			err := vm.executeArrayMap(arr, fn)
+			if err != nil {
+				return err
+			}
+
+		case code.OpArrayFilter:
+			fn := vm.pop()
+			arr := vm.pop()
+
+			err := vm.executeArrayFilter(arr, fn)
+			if err != nil {
+				return err
+			}
 		}
 	}
 
@@ -799,6 +846,8 @@ func isTruthy(obj object.Object) bool {
 		return false
 	case *object.Integer:
 		return obj.Value != 0
+	case *object.Blob:
+		return len(obj.Data) > 0
 	default:
 		return true
 	}
@@ -818,3 +867,301 @@ func (b *BreakSignal) Error() string { return "break" }
 type ContinueSignal struct{}
 
 func (c *ContinueSignal) Error() string { return "continue" }
+
+// Threshold for parallel processing
+const ParallelThreshold = 1000
+
+// executeSetIndex sets a value at the given index in an array or hash
+func (vm *VM) executeSetIndex(left, index, value object.Object) error {
+	switch obj := left.(type) {
+	case *object.Array:
+		idx, ok := index.(*object.Integer)
+		if !ok {
+			return fmt.Errorf("array index must be integer, got %s", index.Type())
+		}
+		i := int(idx.Value)
+		if i < 0 || i >= len(obj.Elements) {
+			// Extend array if necessary
+			if i >= 0 && i < 65536 { // Reasonable limit
+				for len(obj.Elements) <= i {
+					obj.Elements = append(obj.Elements, Null)
+				}
+				obj.Elements[i] = value
+			} else {
+				return fmt.Errorf("array index out of bounds: %d", i)
+			}
+		} else {
+			obj.Elements[i] = value
+		}
+		return vm.push(obj)
+	case *object.PHPArray:
+		obj.Set(index, value)
+		return vm.push(obj)
+	case *object.Hash:
+		hashKey, ok := index.(object.Hashable)
+		if !ok {
+			return fmt.Errorf("unusable as hash key: %s", index.Type())
+		}
+		obj.Pairs[hashKey.HashKey()] = object.HashPair{Key: index, Value: value}
+		return vm.push(obj)
+	default:
+		return fmt.Errorf("index assignment not supported: %s", left.Type())
+	}
+}
+
+// executeArrayPush appends a value to an array
+func (vm *VM) executeArrayPush(arr, value object.Object) error {
+	switch obj := arr.(type) {
+	case *object.Array:
+		obj.Elements = append(obj.Elements, value)
+		return vm.push(obj)
+	case *object.PHPArray:
+		obj.Push(value)
+		return vm.push(obj)
+	default:
+		return fmt.Errorf("cannot push to non-array: %s", arr.Type())
+	}
+}
+
+// executeSlice creates a slice of an array
+func (vm *VM) executeSlice(arr, start, end object.Object) error {
+	arrayObj, ok := arr.(*object.Array)
+	if !ok {
+		return fmt.Errorf("slice operation requires array, got %s", arr.Type())
+	}
+
+	startIdx := 0
+	endIdx := len(arrayObj.Elements)
+
+	if start.Type() != object.NULL_OBJ {
+		startInt, ok := start.(*object.Integer)
+		if !ok {
+			return fmt.Errorf("slice start index must be integer, got %s", start.Type())
+		}
+		startIdx = int(startInt.Value)
+	}
+
+	if end.Type() != object.NULL_OBJ {
+		endInt, ok := end.(*object.Integer)
+		if !ok {
+			return fmt.Errorf("slice end index must be integer, got %s", end.Type())
+		}
+		endIdx = int(endInt.Value)
+	}
+
+	result := arrayObj.Slice(startIdx, endIdx)
+	return vm.push(result)
+}
+
+// executeArrayMap applies a function to each element of an array
+// Uses parallel processing for large arrays
+func (vm *VM) executeArrayMap(arr, fn object.Object) error {
+	arrayObj, ok := arr.(*object.Array)
+	if !ok {
+		return fmt.Errorf("map requires array, got %s", arr.Type())
+	}
+
+	closure, ok := fn.(*object.Closure)
+	if !ok {
+		builtin, ok := fn.(*object.Builtin)
+		if ok {
+			return vm.executeArrayMapBuiltin(arrayObj, builtin)
+		}
+		return fmt.Errorf("map requires function, got %s", fn.Type())
+	}
+
+	results := make([]object.Object, len(arrayObj.Elements))
+
+	// Use parallel processing for large arrays
+	if len(arrayObj.Elements) > ParallelThreshold {
+		var wg sync.WaitGroup
+		errChan := make(chan error, len(arrayObj.Elements))
+
+		for i, el := range arrayObj.Elements {
+			wg.Add(1)
+			go func(idx int, val object.Object) {
+				defer wg.Done()
+				result, err := vm.applyFunctionToElement(closure, val, idx)
+				if err != nil {
+					errChan <- err
+					return
+				}
+				results[idx] = result
+			}(i, el)
+		}
+		wg.Wait()
+		close(errChan)
+
+		if err := <-errChan; err != nil {
+			return err
+		}
+	} else {
+		// Sequential processing for small arrays
+		for i, el := range arrayObj.Elements {
+			result, err := vm.applyFunctionToElement(closure, el, i)
+			if err != nil {
+				return err
+			}
+			results[i] = result
+		}
+	}
+
+	return vm.push(&object.Array{Elements: results})
+}
+
+// executeArrayMapBuiltin applies a builtin function to each array element
+func (vm *VM) executeArrayMapBuiltin(arr *object.Array, builtin *object.Builtin) error {
+	results := make([]object.Object, len(arr.Elements))
+
+	// Parallel processing for large arrays
+	if len(arr.Elements) > ParallelThreshold {
+		var wg sync.WaitGroup
+		for i, el := range arr.Elements {
+			wg.Add(1)
+			go func(idx int, val object.Object) {
+				defer wg.Done()
+				results[idx] = builtin.Fn(val)
+			}(i, el)
+		}
+		wg.Wait()
+	} else {
+		for i, el := range arr.Elements {
+			results[i] = builtin.Fn(el)
+		}
+	}
+
+	return vm.push(&object.Array{Elements: results})
+}
+
+// executeArrayFilter filters array elements using a predicate function
+func (vm *VM) executeArrayFilter(arr, fn object.Object) error {
+	arrayObj, ok := arr.(*object.Array)
+	if !ok {
+		return fmt.Errorf("filter requires array, got %s", arr.Type())
+	}
+
+	closure, ok := fn.(*object.Closure)
+	if !ok {
+		builtin, ok := fn.(*object.Builtin)
+		if ok {
+			return vm.executeArrayFilterBuiltin(arrayObj, builtin)
+		}
+		return fmt.Errorf("filter requires function, got %s", fn.Type())
+	}
+
+	var results []object.Object
+
+	// For filter, we need to maintain order, so parallel is more complex
+	// Use sequential for now, but mark elements for inclusion
+	if len(arrayObj.Elements) > ParallelThreshold {
+		keepFlags := make([]bool, len(arrayObj.Elements))
+		var wg sync.WaitGroup
+
+		for i, el := range arrayObj.Elements {
+			wg.Add(1)
+			go func(idx int, val object.Object) {
+				defer wg.Done()
+				result, err := vm.applyFunctionToElement(closure, val, idx)
+				if err == nil && isTruthy(result) {
+					keepFlags[idx] = true
+				}
+			}(i, el)
+		}
+		wg.Wait()
+
+		// Collect results in order
+		for i, keep := range keepFlags {
+			if keep {
+				results = append(results, arrayObj.Elements[i])
+			}
+		}
+	} else {
+		for i, el := range arrayObj.Elements {
+			result, err := vm.applyFunctionToElement(closure, el, i)
+			if err != nil {
+				return err
+			}
+			if isTruthy(result) {
+				results = append(results, el)
+			}
+		}
+	}
+
+	return vm.push(&object.Array{Elements: results})
+}
+
+// executeArrayFilterBuiltin filters array with a builtin predicate
+func (vm *VM) executeArrayFilterBuiltin(arr *object.Array, builtin *object.Builtin) error {
+	var results []object.Object
+
+	if len(arr.Elements) > ParallelThreshold {
+		keepFlags := make([]bool, len(arr.Elements))
+		var wg sync.WaitGroup
+
+		for i, el := range arr.Elements {
+			wg.Add(1)
+			go func(idx int, val object.Object) {
+				defer wg.Done()
+				result := builtin.Fn(val)
+				if isTruthy(result) {
+					keepFlags[idx] = true
+				}
+			}(i, el)
+		}
+		wg.Wait()
+
+		for i, keep := range keepFlags {
+			if keep {
+				results = append(results, arr.Elements[i])
+			}
+		}
+	} else {
+		for _, el := range arr.Elements {
+			result := builtin.Fn(el)
+			if isTruthy(result) {
+				results = append(results, el)
+			}
+		}
+	}
+
+	return vm.push(&object.Array{Elements: results})
+}
+
+// applyFunctionToElement applies a closure to a single element
+func (vm *VM) applyFunctionToElement(closure *object.Closure, element object.Object, index int) (object.Object, error) {
+	// Create a new VM for this function application
+	newVM := &VM{
+		constants:   vm.constants,
+		stack:       make([]object.Object, StackSize),
+		sp:          0,
+		globals:     vm.globals,
+		frames:      make([]*Frame, MaxFrames),
+		framesIndex: 1,
+	}
+
+	// Set up the function call
+	frame := NewFrame(closure, 0)
+	newVM.frames[0] = frame
+
+	// Push the element as argument
+	newVM.stack[0] = element
+	newVM.sp = 1
+
+	// If the function takes an index parameter, push it too
+	if closure.Fn.NumParameters >= 2 {
+		newVM.stack[1] = &object.Integer{Value: int64(index)}
+		newVM.sp = 2
+	}
+
+	// Run the function
+	err := newVM.Run()
+	if err != nil {
+		return nil, err
+	}
+
+	// Get the result
+	if newVM.sp > 0 {
+		return newVM.stack[newVM.sp-1], nil
+	}
+	return Null, nil
+}

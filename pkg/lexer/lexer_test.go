@@ -165,6 +165,7 @@ func TestKeywords(t *testing.T) {
 		{"catch", token.CATCH},
 		{"finally", token.FINALLY},
 		{"throw", token.THROW},
+		{"blob", token.BLOB},
 	}
 
 	for _, tt := range tests {
@@ -202,7 +203,7 @@ func TestFloat(t *testing.T) {
 }
 
 func TestOperators(t *testing.T) {
-	input := "+-*/%<>!= ==!="
+	input := "+-*/%<>!= == !="
 	l := New(input)
 
 	tests := []struct {
@@ -224,6 +225,37 @@ func TestOperators(t *testing.T) {
 		tok := l.NextToken()
 		if tok.Type != tt.expectedType {
 			t.Fatalf("tests[%d] - type wrong. expected=%q, got=%q", i, tt.expectedType, tok.Type)
+		}
+	}
+}
+
+func TestArrowToken(t *testing.T) {
+	input := `["name" => "Go", 1 => "one"]`
+	l := New(input)
+
+	tests := []struct {
+		expectedType    token.TokenType
+		expectedLiteral string
+	}{
+		{token.LBRACKET, "["},
+		{token.STRING, "name"},
+		{token.ARROW, "=>"},
+		{token.STRING, "Go"},
+		{token.COMMA, ","},
+		{token.INT, "1"},
+		{token.ARROW, "=>"},
+		{token.STRING, "one"},
+		{token.RBRACKET, "]"},
+		{token.EOF, ""},
+	}
+
+	for i, tt := range tests {
+		tok := l.NextToken()
+		if tok.Type != tt.expectedType {
+			t.Fatalf("tests[%d] - type wrong. expected=%q, got=%q", i, tt.expectedType, tok.Type)
+		}
+		if tok.Literal != tt.expectedLiteral {
+			t.Fatalf("tests[%d] - literal wrong. expected=%q, got=%q", i, tt.expectedLiteral, tok.Literal)
 		}
 	}
 }
