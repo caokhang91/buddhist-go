@@ -22,6 +22,7 @@ const (
 	INT    TokenType = "INT"    // 1234567890
 	FLOAT  TokenType = "FLOAT"  // 123.456
 	STRING TokenType = "STRING" // "hello world"
+	BLOB   TokenType = "BLOB"   // blob data
 
 	// Operators
 	ASSIGN   TokenType = "="
@@ -117,6 +118,7 @@ var keywords = map[string]TokenType{
 	"catch":    CATCH,
 	"finally":  FINALLY,
 	"throw":    THROW,
+	"blob":     BLOB,
 }
 
 // LookupIdent checks if the identifier is a keyword
