@@ -1,0 +1,28 @@
+// HTTP Request Example - Buddhist Lang
+
+println("=== HTTP Request Demo ===");
+
+// GET with query parameters (curl-style)
+let getConfig = {
+    "method": "GET",
+    "url": "https://httpbin.org/get",
+    "params": {"q": "buddhist-go", "page": 1},
+    "headers": {"User-Agent": "buddhist-go"}
+};
+
+let getResponse = http_request(getConfig);
+println("GET status: " + str(getResponse["status"]));
+println("GET body: " + getResponse["body"]);
+
+// POST with body using curl alias
+let postConfig = {
+    "method": "POST",
+    "url": "https://httpbin.org/post",
+    "headers": {"Content-Type": "text/plain"},
+    "body": "hello from buddhist-go"
+};
+
+let postResponse = curl(postConfig);
+println("POST status: " + str(postResponse["status"]));
+
+println("=== Demo Complete ===");
