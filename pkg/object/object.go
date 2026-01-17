@@ -31,6 +31,7 @@ const (
 	CONTINUE_OBJ     ObjectType = "CONTINUE"
 	CLASS_OBJ        ObjectType = "CLASS"
 	INSTANCE_OBJ     ObjectType = "INSTANCE"
+	BLOB_OBJ         ObjectType = "BLOB"
 )
 
 // Object interface represents all objects in the language

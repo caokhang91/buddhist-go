@@ -165,6 +165,7 @@ func TestKeywords(t *testing.T) {
 		{"catch", token.CATCH},
 		{"finally", token.FINALLY},
 		{"throw", token.THROW},
+		{"blob", token.BLOB},
 	}
 
 	for _, tt := range tests {

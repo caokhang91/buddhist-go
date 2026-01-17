@@ -846,6 +846,8 @@ func isTruthy(obj object.Object) bool {
 		return false
 	case *object.Integer:
 		return obj.Value != 0
+	case *object.Blob:
+		return len(obj.Data) > 0
 	default:
 		return true
 	}

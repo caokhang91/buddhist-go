@@ -1,6 +1,7 @@
 package object
 
 import (
+	"bytes"
 	"fmt"
 	"strings"
 	"sync"
@@ -51,6 +52,8 @@ var Builtins = []BuiltinDef{
 				return &Integer{Value: int64(len(arg.Value))}
 			case *Array:
 				return &Integer{Value: int64(len(arg.Elements))}
+			case *Blob:
+				return &Integer{Value: int64(len(arg.Data))}
 			default:
 				return newError("argument to `len` not supported, got %s", args[0].Type())
 			}
@@ -708,6 +711,54 @@ var Builtins = []BuiltinDef{
 			return &Float{Value: sum / float64(len(arr.Elements))}
 		},
 	},
+	{
+		Name: "blob_new",
+		Fn:   blobNewBuiltin,
+	},
+	{
+		Name: "blob_from_string",
+		Fn:   blobFromStringBuiltin,
+	},
+	{
+		Name: "blob_from_file",
+		Fn:   blobFromFileBuiltin,
+	},
+	{
+		Name: "blob_write_file",
+		Fn:   blobWriteFileBuiltin,
+	},
+	{
+		Name: "blob_slice",
+		Fn:   blobSliceBuiltin,
+	},
+	{
+		Name: "blob_read_int",
+		Fn:   blobReadIntBuiltin,
+	},
+	{
+		Name: "blob_write_int",
+		Fn:   blobWriteIntBuiltin,
+	},
+	{
+		Name: "blob_read_float",
+		Fn:   blobReadFloatBuiltin,
+	},
+	{
+		Name: "blob_write_float",
+		Fn:   blobWriteFloatBuiltin,
+	},
+	{
+		Name: "blob_mmap",
+		Fn:   blobMmapBuiltin,
+	},
+	{
+		Name: "blob_unmap",
+		Fn:   blobUnmapBuiltin,
+	},
+	{
+		Name: "blob_release",
+		Fn:   blobReleaseBuiltin,
+	},
 }
 
 // GetBuiltinByName returns a builtin function by name
@@ -737,6 +788,8 @@ func isTruthy(obj Object) bool {
 		return len(o.Value) > 0
 	case *Array:
 		return len(o.Elements) > 0
+	case *Blob:
+		return len(o.Data) > 0
 	default:
 		return true
 	}
@@ -758,6 +811,8 @@ func objectsEqual(a, b Object) bool {
 		return aVal.Value == b.(*Boolean).Value
 	case *Null:
 		return true
+	case *Blob:
+		return bytes.Equal(aVal.Data, b.(*Blob).Data)
 	default:
 		return a.Inspect() == b.Inspect()
 	}
