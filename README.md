@@ -1,177 +1,258 @@
-# Buddhist Go - Interpreter Language
+# Buddhist Lang - Go-Powered Interpreter Language
 
-Xây dựng một ngôn ngữ interpreter tận dụng sức mạnh của Go (Golang), khai thác khả năng xử lý song song (concurrency) thông qua Goroutines và Channels.
+[![Build](https://github.com/caokhang91/buddhist-go/actions/workflows/build.yml/badge.svg)](https://github.com/caokhang91/buddhist-go/actions/workflows/build.yml)
+[![Release](https://github.com/caokhang91/buddhist-go/actions/workflows/release.yml/badge.svg)](https://github.com/caokhang91/buddhist-go/actions/workflows/release.yml)
+[![Go Version](https://img.shields.io/badge/Go-1.24-blue.svg)](https://go.dev/)
+[![License](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 
-## Mục lục
+A high-performance bytecode interpreter language built with Go, leveraging Go's runtime for concurrency via Goroutines and Channels.
 
-- [Kiến trúc tổng quan](#kiến-trúc-tổng-quan)
-- [Cách tận dụng Go Runtime](#cách-tận-dụng-go-runtime)
-- [Các bước triển khai](#các-bước-triển-khai)
-- [Cấu trúc Project](#cấu-trúc-project)
-- [Thư viện hỗ trợ](#thư-viện-hỗ-trợ)
-- [Lưu ý về hiệu năng](#lưu-ý-về-hiệu-năng)
+## Features
 
----
+- **High Performance**: Optimized bytecode VM with cached frame references
+- **Concurrency Support**: Native `spawn` keyword and channels for concurrent programming
+- **PHP-Style Arrays**: Ordered hash maps with O(1) lookup and maintained insertion order
+- **Constant Folding**: Compile-time optimization for constant expressions
+- **Integer Caching**: Pre-allocated small integers (-128 to 256) to reduce GC pressure
+- **Optimized Lexer**: Byte slice processing for faster tokenization
 
-## Kiến trúc tổng quan
+## Installation
 
-Một interpreter thông thường sẽ đi qua các bước:
+### From Source
+
+```bash
+# Clone the repository
+git clone https://github.com/caokhang91/buddhist-go.git
+cd buddhist-go
+
+# Build the interpreter
+go build -o buddhist ./cmd/mylang
+
+# Or install directly
+go install ./cmd/mylang
+```
+
+### From Release
+
+Download pre-built binaries from the [Releases](https://github.com/caokhang91/buddhist-go/releases) page.
+
+## Quick Start
+
+### Interactive REPL
+
+```bash
+./buddhist
+```
 
 ```
-Lexer -> Parser -> Abstract Syntax Tree (AST) -> Evaluator
+╔══════════════════════════════════════════════════════════════╗
+║               Go-Powered Interpreter Language                ║
+║                     Version 1.0.0                            ║
+╚══════════════════════════════════════════════════════════════╝
+
+>>> println("Hello, World!")
+Hello, World!
+>>> let x = 10
+>>> x * 2
+20
 ```
 
-Để tận dụng Go Runtime, tập trung vào phần **Evaluator** (trình thực thi) và cách thiết kế AST nodes.
+### Run a Script
 
----
+```bash
+./buddhist examples/hello.bl
+```
 
-## Cách tận dụng Go Runtime
+## Language Syntax
 
-### Tận dụng Concurrency (Goroutines)
+### Variables
 
-Nếu ngôn ngữ hỗ trợ các tác vụ bất đồng bộ hoặc chạy song song, hãy ánh xạ trực tiếp chúng vào Goroutines:
+```javascript
+let x = 5;
+const PI = 3.14159;
+x = x + 1;
+```
 
-- **Keyword `spawn` hoặc `go`**: Định nghĩa một từ khóa trong ngôn ngữ để kích hoạt Goroutine trong Go.
-- **Channels làm công cụ giao tiếp**: Sử dụng `chan` của Go để các script truyền dữ liệu cho nhau thay vì tự xây dựng cơ chế khóa phức tạp.
+### Functions
 
-### Quản lý bộ nhớ (Garbage Collection)
+```javascript
+fn add(a, b) {
+    return a + b;
+}
 
-Một trong những lợi thế lớn nhất là **không cần tự viết Garbage Collector (GC)**:
+// Anonymous functions
+let multiply = fn(a, b) { a * b };
 
-- Khi tạo một đối tượng (ví dụ: `MyObject`), hãy để nó là một `struct` trong Go.
-- Khi biến không còn được tham chiếu trong interpreter, Go GC sẽ tự động dọn dẹp.
-
-### Type System và Interfaces
-
-Sử dụng `interface{}` (hoặc `any` trong các bản Go mới) để đại diện cho các kiểu dữ liệu động. Điều này giúp việc kiểm tra kiểu (Type Checking) ở runtime trở nên linh hoạt hơn.
-
----
-
-## Các bước triển khai
-
-### Bước 1: Định nghĩa Token và Lexer
-
-Sử dụng `struct` để lưu trữ các token và dùng một vòng lặp để quét chuỗi đầu vào.
-
-### Bước 2: Xây dựng AST
-
-Mỗi node trong cây cú pháp nên là một interface:
-
-```go
-type Node interface {
-    TokenLiteral() string
-    Eval() Object // Trả về kết quả thực thi
+// Closures
+fn counter() {
+    let count = 0;
+    return fn() {
+        count = count + 1;
+        return count;
+    };
 }
 ```
 
-### Bước 3: Hiện thực hóa Evaluator với Goroutines
+### Control Flow
 
-Đây là nơi tận dụng Go:
+```javascript
+// If-else
+if (x > 5) {
+    println("greater");
+} else {
+    println("smaller or equal");
+}
 
-```go
-func evalSpawnExpression(node *ast.SpawnExpression, env *object.Environment) object.Object {
-    go func() {
-        Eval(node.Function, env)
-    }()
-    return &object.Null{}
+// While loop
+while (x < 10) {
+    println(x);
+    x = x + 1;
+}
+
+// For loop
+for (let i = 0; i < 10; i = i + 1) {
+    println(i);
 }
 ```
 
----
+### Arrays
 
-## Cấu trúc Project
+```javascript
+// Standard arrays
+let arr = [1, 2, 3, 4, 5];
+println(arr[0]);  // 1
+println(len(arr)); // 5
+
+// PHP-style arrays with keys
+let map = [
+    "name" => "Buddhist",
+    "version" => "1.0.0",
+    0 => "indexed"
+];
+println(map["name"]);  // Buddhist
+```
+
+### Hash Maps
+
+```javascript
+let person = {
+    "name": "John",
+    "age": 30
+};
+println(person["name"]);  // John
+```
+
+### Concurrency
+
+```javascript
+// Create a channel
+let ch = channel;
+
+// Spawn a goroutine
+spawn fn() {
+    ch <- "Hello from goroutine!";
+};
+
+// Receive from channel
+let msg = <-ch;
+println(msg);
+```
+
+## Built-in Functions
+
+| Function | Description |
+|----------|-------------|
+| `println(...)` | Print values with newline |
+| `print(...)` | Print values without newline |
+| `len(x)` | Get length of array/string |
+| `first(arr)` | Get first element of array |
+| `last(arr)` | Get last element of array |
+| `rest(arr)` | Get array without first element |
+| `push(arr, val)` | Append value to array |
+| `type(x)` | Get type of value |
+| `str(x)` | Convert to string |
+| `int(x)` | Convert to integer |
+| `float(x)` | Convert to float |
+
+## Project Structure
 
 ```
-my-lang/
+buddhist-go/
 ├── cmd/
-│   └── mylang/          # Entry point (main.go) - CLI
+│   └── mylang/          # CLI entry point
 ├── pkg/
-│   ├── lexer/           # Chuyển mã nguồn (string) thành Tokens
-│   ├── ast/             # Định nghĩa cấu trúc cây cú pháp
-│   ├── parser/          # Chuyển Tokens thành AST
-│   ├── code/            # Định nghĩa Opcode và hướng dẫn mã hóa bytecode
-│   ├── compiler/        # Chuyển AST thành Bytecode
-│   ├── vm/              # Virtual Machine - Thực thi Bytecode
-│   └── object/          # Hệ thống kiểu dữ liệu (Integer, Boolean, String, v.v.)
-├── go.mod
-└── main.go
+│   ├── ast/             # Abstract Syntax Tree
+│   ├── code/            # Bytecode opcodes and instructions
+│   ├── compiler/        # AST to bytecode compiler
+│   ├── lexer/           # Tokenizer (standard and optimized)
+│   ├── object/          # Runtime object system
+│   ├── parser/          # Token to AST parser
+│   ├── token/           # Token definitions
+│   ├── tracing/         # Debug tracing utilities
+│   └── vm/              # Virtual machine (standard and optimized)
+├── examples/            # Example scripts
+└── intellij-plugin/     # IDE plugin for syntax highlighting
 ```
 
-### Chi tiết vai trò từng Package
+## Architecture
 
-| Package | Vai trò |
-|---------|---------|
-| `pkg/code` | Định nghĩa các tập lệnh (Instructions). Mỗi lệnh có một Opcode (1 byte). Ví dụ: `OpAdd`, `OpPush`, `OpJump` |
-| `pkg/compiler` | Duyệt qua cây AST và phát ra các chỉ thị bytecode tương ứng |
-| `pkg/vm` | Nơi thực thi quan trọng nhất - Stack-based VM với hỗ trợ Concurrency |
-
----
-
-## Ví dụ luồng xử lý mã nguồn
-
-Xử lý dòng lệnh: `let a = 1 + 2;`
-
-| Bước | Package | Kết quả đầu ra |
-|------|---------|----------------|
-| 1 | `lexer` | `[LET, IDENT("a"), ASSIGN, INT(1), PLUS, INT(2)]` |
-| 2 | `parser` | Cây AST (Node gán với biểu thức cộng) |
-| 3 | `compiler` | Bytecode: `PUSH 1, PUSH 2, ADD, SET_VAR "a"` |
-| 4 | `vm` | Lấy 1, 2 bỏ vào Stack, thực hiện ADD, lưu kết quả vào bộ nhớ |
-
----
-
-## Code mẫu: Định nghĩa Opcode
-
-```go
-package code
-
-type Opcode byte
-
-const (
-    OpConstant Opcode = iota // Đẩy hằng số vào stack
-    OpAdd                    // Cộng 2 giá trị trên đỉnh stack
-    OpPop                    // Lấy giá trị ra khỏi stack
-)
-
-// Definition mô tả cấu trúc của một Opcode
-type Definition struct {
-    Name          string
-    OperandWidths []int // Độ dài của các toán hạng (tính bằng byte)
-}
-
-var definitions = map[Opcode]*Definition{
-    OpConstant: {"OpConstant", []int{2}}, // 2-byte cho index của hằng số
-    OpAdd:      {"OpAdd",      []int{}},  // Không có toán hạng
-}
+```
+Source Code → Lexer → Tokens → Parser → AST → Compiler → Bytecode → VM → Result
 ```
 
----
+1. **Lexer**: Converts source code into tokens
+2. **Parser**: Builds an Abstract Syntax Tree from tokens
+3. **Compiler**: Compiles AST to bytecode with optimizations
+4. **VM**: Executes bytecode using a stack-based virtual machine
 
-## Thư viện hỗ trợ
+## Performance
 
-Nếu muốn đẩy nhanh tiến độ, có thể tham khảo:
+The interpreter includes several performance optimizations:
 
-- **[Participle](https://github.com/alecthomas/participle)**: Thư viện giúp xây dựng Parser bằng cách khai báo struct.
-- **[Goyacc](https://pkg.go.dev/golang.org/x/tools/cmd/goyacc)**: Nếu muốn đi theo con đường truyền thống của yacc/lex.
-- **[Yaegi](https://github.com/traefik/yaegi)**: Một interpreter cho chính ngôn ngữ Go, cực kỳ mạnh mẽ để học hỏi cách quản lý runtime.
+- **Optimized VM**: Uses cached frame references and inline operations
+- **Integer Caching**: Pre-allocates frequently used small integers
+- **Constant Folding**: Evaluates constant expressions at compile time
+- **Byte Slice Lexer**: Reduces string allocations during tokenization
+- **Parallel Array Operations**: Uses goroutines for large array operations (>1000 elements)
 
----
+### Benchmarking
 
-## Lưu ý về hiệu năng
+```bash
+./buddhist --benchmark examples/benchmark.bl
+```
 
-### Tree-walking vs Bytecode
+## Development
 
-- **Tree-walking**: Duyệt cây AST - dễ viết nhưng chậm
-- **Bytecode**: Compile AST thành Bytecode và chạy trên Virtual Machine (VM) - nhanh hơn đáng kể
+### Building
 
-### Environment Sharing
+```bash
+go build ./...
+```
 
-Khi dùng Goroutines, cẩn thận với việc chia sẻ Environment (biến số):
+### Testing
 
-- Sử dụng `sync.Map` hoặc `RWMutex` để tránh race conditions
+```bash
+go test ./...
+```
 
----
+### Running Examples
+
+```bash
+go run ./cmd/mylang examples/hello.bl
+```
+
+## IDE Support
+
+An IntelliJ/WebStorm plugin is available in the `intellij-plugin/` directory for syntax highlighting and basic language support.
+
+## Contributing
+
+Contributions are welcome! Please feel free to submit a Pull Request.
 
 ## License
 
-MIT License
+MIT License - See [LICENSE](LICENSE) for details.
+
+## Acknowledgments
+
+This interpreter is inspired by the book "Writing An Interpreter In Go" by Thorsten Ball, with additional features for concurrency, optimization, and PHP-style arrays.

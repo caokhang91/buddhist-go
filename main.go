@@ -15,7 +15,7 @@ import (
 	"github.com/caokhang91/buddhist-go/pkg/vm"
 )
 
-const VERSION = "1.1.0" // Version bump for performance optimizations
+const VERSION = "1.0.0"
 
 // UseOptimizedVM controls whether to use the optimized VM
 var UseOptimizedVM = true
@@ -86,7 +86,7 @@ func printHelp() {
 	fmt.Println("  buddhist-go -b, --benchmark <file>  Benchmark a script file")
 	fmt.Println("  buddhist-go --no-optimize <file>    Run without optimizations")
 	fmt.Println()
-	fmt.Println("Performance Features (v1.1.0):")
+	fmt.Println("Performance Features (v1.0.0):")
 	fmt.Println("  - Optimized VM with cached frame references")
 	fmt.Println("  - Small integer caching (-128 to 256)")
 	fmt.Println("  - Constant folding at compile time")
