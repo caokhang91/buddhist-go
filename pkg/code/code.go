@@ -3,7 +3,8 @@ package code
 import (
 	"bytes"
 	"encoding/binary"
-	"fmt"
+	"errors"
+	"strconv"
 )
 
 // Opcode represents a single byte instruction
@@ -153,7 +154,7 @@ var definitions = map[Opcode]*Definition{
 func Lookup(op byte) (*Definition, error) {
 	def, ok := definitions[Opcode(op)]
 	if !ok {
-		return nil, fmt.Errorf("opcode %d undefined", op)
+		return nil, errors.New("opcode " + strconv.Itoa(int(op)) + " undefined")
 	}
 	return def, nil
 }
@@ -224,13 +225,18 @@ func (ins Instructions) String() string {
 	for i < len(ins) {
 		def, err := Lookup(ins[i])
 		if err != nil {
-			fmt.Fprintf(&out, "ERROR: %s\n", err)
+			out.WriteString("ERROR: ")
+			out.WriteString(err.Error())
+			out.WriteByte('\n')
 			continue
 		}
 
 		operands, read := ReadOperands(def, ins[i+1:])
 
-		fmt.Fprintf(&out, "%04d %s\n", i, ins.fmtInstruction(def, operands))
+		writePaddedIndex(&out, i)
+		out.WriteByte(' ')
+		out.WriteString(ins.fmtInstruction(def, operands))
+		out.WriteByte('\n')
 
 		i += 1 + read
 	}
@@ -242,18 +248,31 @@ func (ins Instructions) fmtInstruction(def *Definition, operands []int) string {
 	operandCount := len(def.OperandWidths)
 
 	if len(operands) != operandCount {
-		return fmt.Sprintf("ERROR: operand len %d does not match defined %d\n",
-			len(operands), operandCount)
+		return "ERROR: operand len " + strconv.Itoa(len(operands)) +
+			" does not match defined " + strconv.Itoa(operandCount) + "\n"
 	}
 
 	switch operandCount {
 	case 0:
 		return def.Name
 	case 1:
-		return fmt.Sprintf("%s %d", def.Name, operands[0])
+		return def.Name + " " + strconv.Itoa(operands[0])
 	case 2:
-		return fmt.Sprintf("%s %d %d", def.Name, operands[0], operands[1])
+		return def.Name + " " + strconv.Itoa(operands[0]) + " " + strconv.Itoa(operands[1])
 	}
 
-	return fmt.Sprintf("ERROR: unhandled operandCount for %s\n", def.Name)
+	return "ERROR: unhandled operandCount for " + def.Name + "\n"
+}
+
+func writePaddedIndex(out *bytes.Buffer, index int) {
+	if index < 0 {
+		out.WriteByte('-')
+		index = -index
+	}
+
+	digits := strconv.Itoa(index)
+	for i := len(digits); i < 4; i++ {
+		out.WriteByte('0')
+	}
+	out.WriteString(digits)
 }
