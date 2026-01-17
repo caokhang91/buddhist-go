@@ -69,6 +69,12 @@ const (
 	OpTry     // Try block
 	OpThrow   // Throw statement
 	OpFinally // Finally block
+	// Array opcodes (PHP-style operations)
+	OpSetIndex   // arr[key] = val - Set element at index
+	OpArrayPush  // arr[] = val - Push with auto-increment
+	OpSlice      // arr[start:end] - Slice array
+	OpArrayMap   // Map function over array
+	OpArrayFilter // Filter array with function
 )
 
 // Definition describes an opcode
@@ -133,6 +139,12 @@ var definitions = map[Opcode]*Definition{
 	OpTry:     {"OpTry", []int{2, 2}},
 	OpThrow:   {"OpThrow", []int{}},
 	OpFinally: {"OpFinally", []int{2}},
+	// Array opcodes
+	OpSetIndex:    {"OpSetIndex", []int{}},
+	OpArrayPush:   {"OpArrayPush", []int{}},
+	OpSlice:       {"OpSlice", []int{}},
+	OpArrayMap:    {"OpArrayMap", []int{}},
+	OpArrayFilter: {"OpArrayFilter", []int{}},
 }
 
 // Lookup returns the definition for an opcode
