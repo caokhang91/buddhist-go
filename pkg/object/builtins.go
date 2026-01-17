@@ -759,6 +759,14 @@ var Builtins = []BuiltinDef{
 		Name: "blob_release",
 		Fn:   blobReleaseBuiltin,
 	},
+	{
+		Name: "http_request",
+		Fn:   httpRequestBuiltin,
+	},
+	{
+		Name: "curl",
+		Fn:   curlBuiltin,
+	},
 }
 
 // GetBuiltinByName returns a builtin function by name
