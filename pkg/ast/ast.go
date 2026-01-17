@@ -502,3 +502,118 @@ func (ae *AssignmentExpression) String() string {
 	out.WriteString(ae.Value.String())
 	return out.String()
 }
+
+// ClassStatement represents a class declaration
+type ClassStatement struct {
+	Token token.Token // the 'class' token
+	Name  *Identifier
+	Body  *BlockStatement // Contains method definitions
+}
+
+func (cs *ClassStatement) statementNode()       {}
+func (cs *ClassStatement) TokenLiteral() string { return cs.Token.Literal }
+func (cs *ClassStatement) String() string {
+	var out bytes.Buffer
+	out.WriteString("class ")
+	out.WriteString(cs.Name.String())
+	out.WriteString(" ")
+	out.WriteString(cs.Body.String())
+	return out.String()
+}
+
+// ThisExpression represents 'this' keyword
+type ThisExpression struct {
+	Token token.Token // the 'this' token
+}
+
+func (te *ThisExpression) expressionNode()      {}
+func (te *ThisExpression) TokenLiteral() string { return te.Token.Literal }
+func (te *ThisExpression) String() string       { return "this" }
+
+// ImportStatement represents an import statement: import { name } from "module"
+type ImportStatement struct {
+	Token    token.Token // the 'import' token
+	Names    []*Identifier
+	FromPath string // The module path/name
+}
+
+func (is *ImportStatement) statementNode()       {}
+func (is *ImportStatement) TokenLiteral() string { return is.Token.Literal }
+func (is *ImportStatement) String() string {
+	var out bytes.Buffer
+	out.WriteString("import { ")
+	for i, name := range is.Names {
+		if i > 0 {
+			out.WriteString(", ")
+		}
+		out.WriteString(name.String())
+	}
+	out.WriteString(" } from \"")
+	out.WriteString(is.FromPath)
+	out.WriteString("\"")
+	return out.String()
+}
+
+// ExportStatement represents an export statement: export let x = 5;
+type ExportStatement struct {
+	Token     token.Token // the 'export' token
+	Statement Statement   // The statement being exported
+}
+
+func (es *ExportStatement) statementNode()       {}
+func (es *ExportStatement) TokenLiteral() string { return es.Token.Literal }
+func (es *ExportStatement) String() string {
+	var out bytes.Buffer
+	out.WriteString("export ")
+	out.WriteString(es.Statement.String())
+	return out.String()
+}
+
+// TryExpression represents a try/catch/finally block
+type TryExpression struct {
+	Token        token.Token // the 'try' token
+	TryBlock     *BlockStatement
+	CatchVar     *Identifier // Variable name for caught error (can be nil)
+	CatchBlock   *BlockStatement
+	FinallyBlock *BlockStatement // Can be nil
+}
+
+func (te *TryExpression) expressionNode()      {}
+func (te *TryExpression) TokenLiteral() string { return te.Token.Literal }
+func (te *TryExpression) String() string {
+	var out bytes.Buffer
+	out.WriteString("try ")
+	out.WriteString(te.TryBlock.String())
+	if te.CatchBlock != nil {
+		out.WriteString(" catch")
+		if te.CatchVar != nil {
+			out.WriteString(" (")
+			out.WriteString(te.CatchVar.String())
+			out.WriteString(")")
+		}
+		out.WriteString(" ")
+		out.WriteString(te.CatchBlock.String())
+	}
+	if te.FinallyBlock != nil {
+		out.WriteString(" finally ")
+		out.WriteString(te.FinallyBlock.String())
+	}
+	return out.String()
+}
+
+// ThrowStatement represents a throw statement: throw error;
+type ThrowStatement struct {
+	Token token.Token // the 'throw' token
+	Value Expression  // The value/error to throw
+}
+
+func (ts *ThrowStatement) statementNode()       {}
+func (ts *ThrowStatement) TokenLiteral() string { return ts.Token.Literal }
+func (ts *ThrowStatement) String() string {
+	var out bytes.Buffer
+	out.WriteString("throw ")
+	if ts.Value != nil {
+		out.WriteString(ts.Value.String())
+	}
+	return out.String()
+}

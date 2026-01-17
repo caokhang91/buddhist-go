@@ -14,48 +14,61 @@ type Instructions []byte
 
 // Opcodes
 const (
-	OpConstant Opcode = iota // Push constant onto stack
-	OpAdd                    // Add two values
-	OpSub                    // Subtract two values
-	OpMul                    // Multiply two values
-	OpDiv                    // Divide two values
-	OpMod                    // Modulo two values
-	OpPop                    // Pop top of stack
-	OpTrue                   // Push true onto stack
-	OpFalse                  // Push false onto stack
-	OpNull                   // Push null onto stack
-	OpEqual                  // Compare equality
-	OpNotEqual               // Compare inequality
-	OpGreaterThan            // Greater than comparison
-	OpGreaterThanOrEqual     // Greater than or equal comparison
-	OpLessThan               // Less than comparison
-	OpLessThanOrEqual        // Less than or equal comparison
-	OpAnd                    // Logical AND
-	OpOr                     // Logical OR
-	OpMinus                  // Negate value
-	OpBang                   // Logical NOT
-	OpJump                   // Unconditional jump
-	OpJumpNotTruthy          // Jump if not truthy
-	OpGetGlobal              // Get global variable
-	OpSetGlobal              // Set global variable
-	OpGetLocal               // Get local variable
-	OpSetLocal               // Set local variable
-	OpArray                  // Create array
-	OpHash                   // Create hash
-	OpIndex                  // Index operation
-	OpCall                   // Call function
-	OpReturnValue            // Return with value
-	OpReturn                 // Return without value
-	OpGetBuiltin             // Get builtin function
-	OpClosure                // Create closure
-	OpGetFree                // Get free variable
-	OpCurrentClosure         // Get current closure
-	OpSpawn                  // Spawn goroutine
-	OpChannel                // Create channel
-	OpSend                   // Send to channel
-	OpReceive                // Receive from channel
-	OpBreak                  // Break from loop
-	OpContinue               // Continue loop
+	OpConstant           Opcode = iota // Push constant onto stack
+	OpAdd                              // Add two values
+	OpSub                              // Subtract two values
+	OpMul                              // Multiply two values
+	OpDiv                              // Divide two values
+	OpMod                              // Modulo two values
+	OpPop                              // Pop top of stack
+	OpTrue                             // Push true onto stack
+	OpFalse                            // Push false onto stack
+	OpNull                             // Push null onto stack
+	OpEqual                            // Compare equality
+	OpNotEqual                         // Compare inequality
+	OpGreaterThan                      // Greater than comparison
+	OpGreaterThanOrEqual               // Greater than or equal comparison
+	OpLessThan                         // Less than comparison
+	OpLessThanOrEqual                  // Less than or equal comparison
+	OpAnd                              // Logical AND
+	OpOr                               // Logical OR
+	OpMinus                            // Negate value
+	OpBang                             // Logical NOT
+	OpJump                             // Unconditional jump
+	OpJumpNotTruthy                    // Jump if not truthy
+	OpGetGlobal                        // Get global variable
+	OpSetGlobal                        // Set global variable
+	OpGetLocal                         // Get local variable
+	OpSetLocal                         // Set local variable
+	OpArray                            // Create array
+	OpHash                             // Create hash
+	OpIndex                            // Index operation
+	OpCall                             // Call function
+	OpReturnValue                      // Return with value
+	OpReturn                           // Return without value
+	OpGetBuiltin                       // Get builtin function
+	OpClosure                          // Create closure
+	OpGetFree                          // Get free variable
+	OpCurrentClosure                   // Get current closure
+	OpSpawn                            // Spawn goroutine
+	OpChannel                          // Create channel
+	OpChannelBuffered                  // Create buffered channel
+	OpSend                             // Send to channel
+	OpReceive                          // Receive from channel
+	OpCloseChannel                     // Close channel
+	OpBreak                            // Break from loop
+	OpContinue                         // Continue loop
+	// Class opcodes
+	OpClass       // Push class constant
+	OpInstantiate // Instantiate class
+	OpGetMethod   // Get method
+	OpCallMethod  // Call method
+	OpGetProperty // Get instance property
+	OpSetProperty // Set instance property
+	// Error handling opcodes
+	OpTry     // Try block
+	OpThrow   // Throw statement
+	OpFinally // Finally block
 )
 
 // Definition describes an opcode
@@ -103,10 +116,23 @@ var definitions = map[Opcode]*Definition{
 	OpCurrentClosure:     {"OpCurrentClosure", []int{}},
 	OpSpawn:              {"OpSpawn", []int{}},
 	OpChannel:            {"OpChannel", []int{}},
+	OpChannelBuffered:    {"OpChannelBuffered", []int{2}}, // Buffer size (uint16)
 	OpSend:               {"OpSend", []int{}},
 	OpReceive:            {"OpReceive", []int{}},
+	OpCloseChannel:       {"OpCloseChannel", []int{}},
 	OpBreak:              {"OpBreak", []int{}},
 	OpContinue:           {"OpContinue", []int{}},
+	// Class opcodes
+	OpClass:       {"OpClass", []int{2}},
+	OpInstantiate: {"OpInstantiate", []int{1}},
+	OpGetMethod:   {"OpGetMethod", []int{2}},
+	OpCallMethod:  {"OpCallMethod", []int{1}},
+	OpGetProperty: {"OpGetProperty", []int{}},
+	OpSetProperty: {"OpSetProperty", []int{}},
+	// Error handling opcodes
+	OpTry:     {"OpTry", []int{2, 2}},
+	OpThrow:   {"OpThrow", []int{}},
+	OpFinally: {"OpFinally", []int{2}},
 }
 
 // Lookup returns the definition for an opcode

@@ -75,6 +75,20 @@ const (
 	CHANNEL TokenType = "CHANNEL" // Khai báo channel
 	SEND    TokenType = "<-"      // Gửi vào channel
 	RECEIVE TokenType = "->"      // Nhận từ channel
+
+	// Class keywords
+	CLASS TokenType = "CLASS" // Class declaration
+
+	// Module keywords
+	IMPORT TokenType = "IMPORT" // Import statement
+	EXPORT TokenType = "EXPORT" // Export statement
+	FROM   TokenType = "FROM"   // From clause
+
+	// Error handling keywords
+	TRY     TokenType = "TRY"     // Try block
+	CATCH   TokenType = "CATCH"   // Catch block
+	FINALLY TokenType = "FINALLY" // Finally block
+	THROW   TokenType = "THROW"   // Throw statement
 )
 
 // keywords maps keyword strings to their token types
@@ -94,6 +108,14 @@ var keywords = map[string]TokenType{
 	"null":     NULL,
 	"spawn":    SPAWN,
 	"channel":  CHANNEL,
+	"class":    CLASS,
+	"import":   IMPORT,
+	"export":   EXPORT,
+	"from":     FROM,
+	"try":      TRY,
+	"catch":    CATCH,
+	"finally":  FINALLY,
+	"throw":    THROW,
 }
 
 // LookupIdent checks if the identifier is a keyword

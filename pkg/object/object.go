@@ -28,6 +28,8 @@ const (
 	CHANNEL_OBJ      ObjectType = "CHANNEL"
 	BREAK_OBJ        ObjectType = "BREAK"
 	CONTINUE_OBJ     ObjectType = "CONTINUE"
+	CLASS_OBJ        ObjectType = "CLASS"
+	INSTANCE_OBJ     ObjectType = "INSTANCE"
 )
 
 // Object interface represents all objects in the language
@@ -226,3 +228,29 @@ type Continue struct{}
 
 func (c *Continue) Type() ObjectType { return CONTINUE_OBJ }
 func (c *Continue) Inspect() string  { return "continue" }
+
+// Class represents a class definition
+// Note: CompiledFunction is defined in builtins.go
+type Class struct {
+	Name       string
+	Methods    map[string]*CompiledFunction
+	Properties []string // Property names for initialization
+}
+
+func (c *Class) Type() ObjectType { return CLASS_OBJ }
+func (c *Class) Inspect() string {
+	return fmt.Sprintf("class %s", c.Name)
+}
+
+// Instance represents an instance of a class
+type Instance struct {
+	Class  *Class
+	Fields map[string]Object
+}
+
+func (i *Instance) Type() ObjectType { return INSTANCE_OBJ }
+func (i *Instance) Inspect() string {
+	var out bytes.Buffer
+	out.WriteString(fmt.Sprintf("%s instance", i.Class.Name))
+	return out.String()
+}

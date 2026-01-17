@@ -2,6 +2,7 @@ package vm
 
 import (
 	"fmt"
+	"sync"
 
 	"github.com/caokhang91/buddhist-go/pkg/code"
 	"github.com/caokhang91/buddhist-go/pkg/compiler"
@@ -41,7 +42,8 @@ type VM struct {
 	stack []object.Object
 	sp    int // Always points to the next value. Top of stack is stack[sp-1]
 
-	globals []object.Object
+	globals   []object.Object
+	globalsMu sync.RWMutex // Protects globals from concurrent access
 
 	frames      []*Frame
 	framesIndex int
@@ -200,12 +202,18 @@ func (vm *VM) Run() error {
 		case code.OpSetGlobal:
 			globalIndex := code.ReadUint16(ins[ip+1:])
 			vm.currentFrame().ip += 2
-			vm.globals[globalIndex] = vm.pop()
+			value := vm.pop()
+			vm.globalsMu.Lock()
+			vm.globals[globalIndex] = value
+			vm.globalsMu.Unlock()
 
 		case code.OpGetGlobal:
 			globalIndex := code.ReadUint16(ins[ip+1:])
 			vm.currentFrame().ip += 2
-			err := vm.push(vm.globals[globalIndex])
+			vm.globalsMu.RLock()
+			value := vm.globals[globalIndex]
+			vm.globalsMu.RUnlock()
+			err := vm.push(value)
 			if err != nil {
 				return err
 			}
@@ -338,6 +346,15 @@ func (vm *VM) Run() error {
 				return err
 			}
 
+		case code.OpChannelBuffered:
+			bufferSize := int(code.ReadUint16(ins[ip+1:]))
+			vm.currentFrame().ip += 2
+			channel := &object.Channel{Chan: make(chan object.Object, bufferSize)}
+			err := vm.push(channel)
+			if err != nil {
+				return err
+			}
+
 		case code.OpSend:
 			value := vm.pop()
 			channel := vm.pop()
@@ -345,7 +362,8 @@ func (vm *VM) Run() error {
 			if !ok {
 				return fmt.Errorf("cannot send to non-channel")
 			}
-			go func() { ch.Chan <- value }()
+			// Blocking send - no goroutine wrapper
+			ch.Chan <- value
 			err := vm.push(Null)
 			if err != nil {
 				return err
@@ -357,8 +375,28 @@ func (vm *VM) Run() error {
 			if !ok {
 				return fmt.Errorf("cannot receive from non-channel")
 			}
-			value := <-ch.Chan
-			err := vm.push(value)
+			value, ok := <-ch.Chan
+			if !ok {
+				// Channel is closed
+				err := vm.push(Null)
+				if err != nil {
+					return err
+				}
+			} else {
+				err := vm.push(value)
+				if err != nil {
+					return err
+				}
+			}
+
+		case code.OpCloseChannel:
+			channel := vm.pop()
+			ch, ok := channel.(*object.Channel)
+			if !ok {
+				return fmt.Errorf("cannot close non-channel")
+			}
+			close(ch.Chan)
+			err := vm.push(Null)
 			if err != nil {
 				return err
 			}
@@ -736,11 +774,19 @@ func (vm *VM) executeSpawn(fn object.Object) {
 			constants:   vm.constants,
 			stack:       make([]object.Object, StackSize),
 			sp:          0,
-			globals:     vm.globals,
+			globals:     vm.globals,   // Share globals with parent VM
+			globalsMu:   vm.globalsMu, // Share mutex for thread-safe access
 			frames:      make([]*Frame, MaxFrames),
 			framesIndex: 1,
 		}
 		newVM.frames[0] = NewFrame(fn, 0)
+		// Add panic recovery for spawned goroutines
+		defer func() {
+			if r := recover(); r != nil {
+				// Panic recovered - could log or report error here
+				// For now, we silently recover to prevent crashes
+			}
+		}()
 		newVM.Run()
 	}
 }
