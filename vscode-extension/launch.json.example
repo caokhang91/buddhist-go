@@ -1,0 +1,20 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "type": "buddhist",
+      "request": "launch",
+      "name": "Launch Buddhist Program",
+      "program": "${workspaceFolder}/examples/hello.bl",
+      "stopOnEntry": false,
+      "showDebugOutput": false
+    },
+    {
+      "type": "buddhist",
+      "request": "launch",
+      "name": "Launch Current File",
+      "program": "${file}",
+      "stopOnEntry": false
+    }
+  ]
+}

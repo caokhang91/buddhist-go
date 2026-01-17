@@ -291,13 +291,19 @@ func startREPL(in io.Reader, out io.Writer) {
 
 		input := inputBuffer.String()
 
+		// Check for unbalanced braces first - if braces aren't balanced,
+		// we definitely need more input
+		if countBraces(input) > 0 {
+			continue
+		}
+
 		// Try to parse using optimized lexer
 		l := lexer.NewOptimized(input)
 		p := parser.New(l)
 		program := p.ParseProgram()
 
 		// Check for incomplete input (might need more)
-		if hasIncompleteInput(p.Errors()) {
+		if hasIncompleteInput(p.Errors(), input) {
 			continue
 		}
 
@@ -347,13 +353,100 @@ func startREPL(in io.Reader, out io.Writer) {
 	}
 }
 
-func hasIncompleteInput(errors []string) bool {
+func hasIncompleteInput(errors []string, input string) bool {
 	for _, err := range errors {
 		if strings.Contains(err, "expected next token") {
 			return true
 		}
+		// If we see an error about unexpected EOF or missing closing brace
+		// and we have unbalanced input, we need more
+		if strings.Contains(err, "unexpected EOF") ||
+			strings.Contains(err, "expected }") ||
+			strings.Contains(err, "expected )") ||
+			strings.Contains(err, "expected ]") {
+			return true
+		}
+	}
+	// Also check if the input ends with an operator or opening brace
+	// which typically indicates incomplete input
+	trimmed := strings.TrimRight(input, " \t\n")
+	if len(trimmed) > 0 {
+		lastChar := trimmed[len(trimmed)-1]
+		if lastChar == '{' || lastChar == '(' || lastChar == '[' ||
+			lastChar == ',' || lastChar == '+' || lastChar == '-' ||
+			lastChar == '*' || lastChar == '/' || lastChar == '=' ||
+			lastChar == '<' || lastChar == '>' || lastChar == '&' ||
+			lastChar == '|' || lastChar == ':' {
+			return true
+		}
 	}
 	return false
+}
+
+// countBraces returns the net count of open braces (open - close)
+// Also accounts for braces inside strings and comments
+func countBraces(input string) int {
+	count := 0
+	inString := false
+	inComment := false
+	stringChar := byte(0)
+	
+	for i := 0; i < len(input); i++ {
+		ch := input[i]
+		
+		// Handle line comments
+		if !inString && i+1 < len(input) && ch == '/' && input[i+1] == '/' {
+			// Skip to end of line
+			for i < len(input) && input[i] != '\n' {
+				i++
+			}
+			continue
+		}
+		
+		// Handle block comments
+		if !inString && i+1 < len(input) && ch == '/' && input[i+1] == '*' {
+			inComment = true
+			i++
+			continue
+		}
+		if inComment && i+1 < len(input) && ch == '*' && input[i+1] == '/' {
+			inComment = false
+			i++
+			continue
+		}
+		if inComment {
+			continue
+		}
+		
+		// Handle strings
+		if !inString && (ch == '"' || ch == '\'') {
+			inString = true
+			stringChar = ch
+			continue
+		}
+		if inString && ch == stringChar {
+			// Check for escape
+			escapes := 0
+			for j := i - 1; j >= 0 && input[j] == '\\'; j-- {
+				escapes++
+			}
+			if escapes%2 == 0 {
+				inString = false
+			}
+			continue
+		}
+		
+		// Count braces
+		if !inString {
+			if ch == '{' || ch == '(' || ch == '[' {
+				count++
+			} else if ch == '}' || ch == ')' || ch == ']' {
+				count--
+			}
+		}
+	}
+	
+	return count
 }
 
 func printParserErrors(out io.Writer, errors []string) {

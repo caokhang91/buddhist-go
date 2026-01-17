@@ -459,12 +459,18 @@ func (se *SpawnExpression) String() string {
 
 // ChannelExpression represents a channel declaration
 type ChannelExpression struct {
-	Token token.Token // the 'channel' token
+	Token      token.Token // the 'channel' token
+	BufferSize Expression  // optional buffer size for buffered channels
 }
 
 func (ce *ChannelExpression) expressionNode()      {}
 func (ce *ChannelExpression) TokenLiteral() string { return ce.Token.Literal }
-func (ce *ChannelExpression) String() string       { return "channel" }
+func (ce *ChannelExpression) String() string {
+	if ce.BufferSize != nil {
+		return "channel(" + ce.BufferSize.String() + ")"
+	}
+	return "channel"
+}
 
 // SendExpression represents sending a value to a channel: ch <- value
 type SendExpression struct {

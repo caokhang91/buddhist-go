@@ -1,0 +1,154 @@
+{
+  "name": "buddhist-lang",
+  "displayName": "Buddhist Language",
+  "description": "Language support and debugger for Buddhist Language",
+  "version": "1.0.0",
+  "engines": {
+    "vscode": "^1.80.0"
+  },
+  "categories": [
+    "Programming Languages",
+    "Debuggers"
+  ],
+  "activationEvents": [
+    "onLanguage:buddhist",
+    "onDebug"
+  ],
+  "main": "./out/extension.js",
+  "contributes": {
+    "languages": [
+      {
+        "id": "buddhist",
+        "aliases": [
+          "Buddhist",
+          "buddhist"
+        ],
+        "extensions": [
+          ".bl"
+        ],
+        "configuration": "./language-configuration.json"
+      }
+    ],
+    "grammars": [
+      {
+        "language": "buddhist",
+        "scopeName": "source.buddhist",
+        "path": "./syntaxes/buddhist.tmLanguage.json"
+      }
+    ],
+    "configuration": {
+      "title": "Buddhist Language",
+      "properties": {
+        "buddhist.interpreterPath": {
+          "type": "string",
+          "default": "buddhist",
+          "description": "Path to the Buddhist interpreter executable"
+        },
+        "buddhist.trace": {
+          "type": "boolean",
+          "default": false,
+          "description": "Enable debug tracing"
+        }
+      }
+    },
+    "debuggers": [
+      {
+        "type": "buddhist",
+        "label": "Buddhist Debugger",
+        "configurationAttributes": {
+          "launch": {
+            "required": [
+              "program"
+            ],
+            "properties": {
+              "program": {
+                "type": "string",
+                "description": "Path to the Buddhist program to debug",
+                "default": "${workspaceFolder}/${fileBasename}"
+              },
+              "args": {
+                "type": "array",
+                "description": "Command line arguments",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "cwd": {
+                "type": "string",
+                "description": "Working directory",
+                "default": "${workspaceFolder}"
+              },
+              "env": {
+                "type": "object",
+                "description": "Environment variables"
+              },
+              "stopOnEntry": {
+                "type": "boolean",
+                "description": "Stop at entry point",
+                "default": false
+              },
+              "showDebugOutput": {
+                "type": "boolean",
+                "description": "Show debug adapter output",
+                "default": false
+              }
+            }
+          },
+          "attach": {
+            "required": [
+              "port"
+            ],
+            "properties": {
+              "port": {
+                "type": "number",
+                "description": "Port to attach to",
+                "default": 2345
+              },
+              "host": {
+                "type": "string",
+                "description": "Host to attach to",
+                "default": "localhost"
+              }
+            }
+          }
+        },
+        "initialConfigurations": [
+          {
+            "type": "buddhist",
+            "name": "Launch Buddhist Program",
+            "request": "launch",
+            "program": "${workspaceFolder}/examples/hello.bl"
+          }
+        ],
+        "configurationSnippets": [
+          {
+            "label": "Buddhist: Launch Program",
+            "description": "Launch a Buddhist program",
+            "body": {
+              "type": "buddhist",
+              "request": "launch",
+              "name": "Launch ${workspaceFolderBasename}",
+              "program": "${file}"
+            }
+          }
+        ]
+      }
+    ]
+  },
+  "scripts": {
+    "vscode:prepublish": "npm run compile",
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./",
+    "pretest": "npm run compile",
+    "test": "node ./out/test/runTest.js"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "@types/vscode": "^1.80.0",
+    "typescript": "^5.0.0"
+  },
+  "dependencies": {
+    "vscode-debugadapter": "^1.50.0",
+    "vscode-debugprotocol": "^1.50.0"
+  }
+}

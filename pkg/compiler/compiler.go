@@ -245,8 +245,10 @@ func (c *Compiler) Compile(node ast.Node) error {
 
 		if symbol.Scope == GlobalScope {
 			c.emit(code.OpSetGlobal, symbol.Index)
+			c.emit(code.OpGetGlobal, symbol.Index) // Push the assigned value back
 		} else {
 			c.emit(code.OpSetLocal, symbol.Index)
+			c.emit(code.OpGetLocal, symbol.Index) // Push the assigned value back
 		}
 
 	case *ast.ConstStatement:
@@ -519,7 +521,15 @@ func (c *Compiler) Compile(node ast.Node) error {
 		c.emit(code.OpSpawn)
 
 	case *ast.ChannelExpression:
-		c.emit(code.OpChannel)
+		if node.BufferSize != nil {
+			err := c.Compile(node.BufferSize)
+			if err != nil {
+				return err
+			}
+			c.emit(code.OpChannelBuffered)
+		} else {
+			c.emit(code.OpChannel)
+		}
 
 	case *ast.SendExpression:
 		err := c.Compile(node.Channel)

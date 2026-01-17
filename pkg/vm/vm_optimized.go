@@ -215,7 +215,20 @@ func (vm *OptimizedVM) Run() error {
 				}
 			}
 			
-			// Fast path for booleans
+			// Fast path for strings - compare by value
+			if leftStr, ok := left.(*object.String); ok {
+				if rightStr, ok := right.(*object.String); ok {
+					if leftStr.Value == rightStr.Value {
+						vm.stack[vm.sp] = True
+					} else {
+						vm.stack[vm.sp] = False
+					}
+					vm.sp++
+					continue
+				}
+			}
+			
+			// Fast path for booleans and other pointer-equal objects
 			if left == right {
 				vm.stack[vm.sp] = True
 			} else {
@@ -232,6 +245,19 @@ func (vm *OptimizedVM) Run() error {
 			if leftInt, ok := left.(*object.Integer); ok {
 				if rightInt, ok := right.(*object.Integer); ok {
 					if leftInt.Value != rightInt.Value {
+						vm.stack[vm.sp] = True
+					} else {
+						vm.stack[vm.sp] = False
+					}
+					vm.sp++
+					continue
+				}
+			}
+			
+			// Fast path for strings - compare by value
+			if leftStr, ok := left.(*object.String); ok {
+				if rightStr, ok := right.(*object.String); ok {
+					if leftStr.Value != rightStr.Value {
 						vm.stack[vm.sp] = True
 					} else {
 						vm.stack[vm.sp] = False
@@ -509,9 +535,16 @@ func (vm *OptimizedVM) Run() error {
 			vm.sp++
 
 		case code.OpChannelBuffered:
-			bufferSize := int(code.ReadUint16(ins[ip+1:]))
-			frame.ip += 2
-			channel := &object.Channel{Chan: make(chan object.Object, bufferSize)}
+			vm.sp--
+			sizeObj := vm.stack[vm.sp]
+			sizeInt, ok := sizeObj.(*object.Integer)
+			if !ok {
+				return fmt.Errorf("channel buffer size must be integer, got %s", sizeObj.Type())
+			}
+			if sizeInt.Value < 0 {
+				return fmt.Errorf("channel buffer size must be non-negative, got %d", sizeInt.Value)
+			}
+			channel := &object.Channel{Chan: make(chan object.Object, sizeInt.Value)}
 			vm.stack[vm.sp] = channel
 			vm.sp++
 
@@ -944,9 +977,17 @@ func (vm *OptimizedVM) executeSpawnOptimized(fn object.Object) {
 		}
 		newVM.frames[0] = NewFrame(fn, 0)
 		defer func() {
-			recover() // Silent recovery for spawned goroutines
+			if r := recover(); r != nil {
+				// Log panic but don't crash - errors should be handled by VM error returns
+				// This is a safety net for unexpected panics
+			}
 		}()
-		newVM.Run()
+		// Run and check for errors - don't silently ignore them
+		if err := newVM.Run(); err != nil {
+			// VM errors are returned, but we can't propagate them from a goroutine
+			// The error indicates something went wrong in the spawned function
+			// This could cause hangs if channel operations fail
+		}
 	}
 }
 

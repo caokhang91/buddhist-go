@@ -727,7 +727,19 @@ func (p *Parser) parseSpawnExpression() ast.Expression {
 }
 
 func (p *Parser) parseChannelExpression() ast.Expression {
-	return &ast.ChannelExpression{Token: p.curToken}
+	exp := &ast.ChannelExpression{Token: p.curToken}
+
+	// Check for buffered channel syntax: channel(bufferSize)
+	if p.peekTokenIs(token.LPAREN) {
+		p.nextToken() // consume '('
+		p.nextToken() // move to buffer size expression
+		exp.BufferSize = p.parseExpression(LOWEST)
+		if !p.expectPeek(token.RPAREN) {
+			return nil
+		}
+	}
+
+	return exp
 }
 
 func (p *Parser) parseSendExpression(left ast.Expression) ast.Expression {

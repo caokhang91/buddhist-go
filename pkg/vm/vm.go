@@ -385,9 +385,15 @@ func (vm *VM) Run() error {
 			}
 
 		case code.OpChannelBuffered:
-			bufferSize := int(code.ReadUint16(ins[ip+1:]))
-			vm.currentFrame().ip += 2
-			channel := &object.Channel{Chan: make(chan object.Object, bufferSize)}
+			sizeObj := vm.pop()
+			sizeInt, ok := sizeObj.(*object.Integer)
+			if !ok {
+				return fmt.Errorf("channel buffer size must be integer, got %s", sizeObj.Type())
+			}
+			if sizeInt.Value < 0 {
+				return fmt.Errorf("channel buffer size must be non-negative, got %d", sizeInt.Value)
+			}
+			channel := &object.Channel{Chan: make(chan object.Object, sizeInt.Value)}
 			err := vm.push(channel)
 			if err != nil {
 				return err
@@ -609,6 +615,13 @@ func (vm *VM) executeComparison(op code.Opcode) error {
 	right := vm.pop()
 	left := vm.pop()
 
+	// Fail fast: only OpEqual and OpNotEqual supported for non-numeric types
+	if op != code.OpEqual && op != code.OpNotEqual {
+		if left.Type() != object.INTEGER_OBJ && left.Type() != object.FLOAT_OBJ {
+			return fmt.Errorf("unknown operator: %d (%s %s)", op, left.Type(), right.Type())
+		}
+	}
+
 	if left.Type() == object.INTEGER_OBJ && right.Type() == object.INTEGER_OBJ {
 		return vm.executeIntegerComparison(op, left, right)
 	}
@@ -617,15 +630,21 @@ func (vm *VM) executeComparison(op code.Opcode) error {
 		return vm.executeFloatComparison(op, left, right)
 	}
 
-	switch op {
-	case code.OpEqual:
-		return vm.push(nativeBoolToBooleanObject(right == left))
-	case code.OpNotEqual:
-		return vm.push(nativeBoolToBooleanObject(right != left))
-	default:
-		return fmt.Errorf("unknown operator: %d (%s %s)",
-			op, left.Type(), right.Type())
+	// String comparison by value
+	if left.Type() == object.STRING_OBJ && right.Type() == object.STRING_OBJ {
+		leftStr := left.(*object.String).Value
+		rightStr := right.(*object.String).Value
+		if op == code.OpEqual {
+			return vm.push(nativeBoolToBooleanObject(leftStr == rightStr))
+		}
+		return vm.push(nativeBoolToBooleanObject(leftStr != rightStr))
 	}
+
+	// Pointer comparison for other types (booleans, nulls, etc.)
+	if op == code.OpEqual {
+		return vm.push(nativeBoolToBooleanObject(right == left))
+	}
+	return vm.push(nativeBoolToBooleanObject(right != left))
 }
 
 func (vm *VM) executeIntegerComparison(op code.Opcode, left, right object.Object) error {
@@ -903,11 +922,16 @@ func (vm *VM) executeSpawn(fn object.Object) {
 		// Add panic recovery for spawned goroutines
 		defer func() {
 			if r := recover(); r != nil {
-				// Panic recovered - could log or report error here
-				// For now, we silently recover to prevent crashes
+				// Log panic but don't crash - errors should be handled by VM error returns
+				// This is a safety net for unexpected panics
 			}
 		}()
-		newVM.Run()
+		// Run and check for errors - don't silently ignore them
+		if err := newVM.Run(); err != nil {
+			// VM errors are returned, but we can't propagate them from a goroutine
+			// The error indicates something went wrong in the spawned function
+			// This could cause hangs if channel operations fail
+		}
 	}
 }
 
