@@ -618,7 +618,59 @@ func (p *Parser) parseExpressionList(end token.TokenType) []ast.Expression {
 
 func (p *Parser) parseArrayLiteral() ast.Expression {
 	array := &ast.ArrayLiteral{Token: p.curToken}
-	array.Elements = p.parseExpressionList(token.RBRACKET)
+
+	// Check if it's empty array
+	if p.peekTokenIs(token.RBRACKET) {
+		p.nextToken()
+		return array
+	}
+
+	// Parse first element to determine array type
+	p.nextToken()
+	firstExpr := p.parseExpression(LOWEST)
+
+	// Check if this is a PHP-style associative array with =>
+	if p.peekTokenIs(token.ARROW) {
+		// PHP-style associative array: [key => value, ...]
+		array.Pairs = make(map[ast.Expression]ast.Expression)
+
+		p.nextToken() // consume =>
+		p.nextToken()
+		value := p.parseExpression(LOWEST)
+		array.Pairs[firstExpr] = value
+
+		for p.peekTokenIs(token.COMMA) {
+			p.nextToken() // consume comma
+			p.nextToken()
+			key := p.parseExpression(LOWEST)
+
+			if !p.expectPeek(token.ARROW) {
+				return nil
+			}
+
+			p.nextToken()
+			value := p.parseExpression(LOWEST)
+			array.Pairs[key] = value
+		}
+
+		if !p.expectPeek(token.RBRACKET) {
+			return nil
+		}
+	} else {
+		// Regular array: [1, 2, 3]
+		array.Elements = append(array.Elements, firstExpr)
+
+		for p.peekTokenIs(token.COMMA) {
+			p.nextToken()
+			p.nextToken()
+			array.Elements = append(array.Elements, p.parseExpression(LOWEST))
+		}
+
+		if !p.expectPeek(token.RBRACKET) {
+			return nil
+		}
+	}
+
 	return array
 }
 

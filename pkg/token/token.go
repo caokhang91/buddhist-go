@@ -47,6 +47,7 @@ const (
 	COMMA     TokenType = ","
 	SEMICOLON TokenType = ";"
 	COLON     TokenType = ":"
+	ARROW     TokenType = "=>" // PHP-style array key-value separator
 
 	LPAREN   TokenType = "("
 	RPAREN   TokenType = ")"
