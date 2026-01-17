@@ -70,11 +70,12 @@ const (
 	OpThrow   // Throw statement
 	OpFinally // Finally block
 	// Array opcodes (PHP-style operations)
-	OpSetIndex   // arr[key] = val - Set element at index
-	OpArrayPush  // arr[] = val - Push with auto-increment
-	OpSlice      // arr[start:end] - Slice array
-	OpArrayMap   // Map function over array
+	OpSetIndex    // arr[key] = val - Set element at index
+	OpArrayPush   // arr[] = val - Push with auto-increment
+	OpSlice       // arr[start:end] - Slice array
+	OpArrayMap    // Map function over array
 	OpArrayFilter // Filter array with function
+	OpPHPArray    // Create PHP-style array (ordered map)
 )
 
 // Definition describes an opcode
@@ -145,6 +146,7 @@ var definitions = map[Opcode]*Definition{
 	OpSlice:       {"OpSlice", []int{}},
 	OpArrayMap:    {"OpArrayMap", []int{}},
 	OpArrayFilter: {"OpArrayFilter", []int{}},
+	OpPHPArray:    {"OpPHPArray", []int{2}},
 }
 
 // Lookup returns the definition for an opcode
