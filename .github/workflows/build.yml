@@ -13,10 +13,27 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os:
-          - ubuntu-latest
-          - macos-latest
-          - windows-latest
+        include:
+          - os: ubuntu-latest
+            goos: linux
+            goarch: amd64
+            artifact_name: mylang-linux-amd64
+          - os: ubuntu-latest
+            goos: linux
+            goarch: arm64
+            artifact_name: mylang-linux-arm64
+          - os: macos-latest
+            goos: darwin
+            goarch: amd64
+            artifact_name: mylang-darwin-amd64
+          - os: macos-latest
+            goos: darwin
+            goarch: arm64
+            artifact_name: mylang-darwin-arm64
+          - os: windows-latest
+            goos: windows
+            goarch: amd64
+            artifact_name: mylang-windows-amd64.exe
     steps:
       - name: Checkout source
         uses: actions/checkout@v4
@@ -31,8 +48,17 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          output="mylang"
-          if [ "${{ runner.os }}" = "Windows" ]; then
-            output="mylang.exe"
+          ext=""
+          if [ "${{ matrix.goos }}" = "windows" ]; then
+            ext=".exe"
           fi
-          go build -trimpath -ldflags "-s -w" -o "$output" ./cmd/mylang
+          CGO_ENABLED=0 GOOS=${{ matrix.goos }} GOARCH=${{ matrix.goarch }} \
+            go build -trimpath -ldflags "-s -w" \
+            -o "${{ matrix.artifact_name }}" ./cmd/mylang
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact_name }}
+          path: ${{ matrix.artifact_name }}
+          retention-days: 7

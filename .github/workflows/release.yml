@@ -13,8 +13,32 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  release:
-    runs-on: ubuntu-latest
+  build:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            goos: linux
+            goarch: amd64
+            artifact_name: mylang-linux-amd64
+          - os: ubuntu-latest
+            goos: linux
+            goarch: arm64
+            artifact_name: mylang-linux-arm64
+          - os: macos-latest
+            goos: darwin
+            goarch: amd64
+            artifact_name: mylang-darwin-amd64
+          - os: macos-latest
+            goos: darwin
+            goarch: arm64
+            artifact_name: mylang-darwin-arm64
+          - os: windows-latest
+            goos: windows
+            goarch: amd64
+            artifact_name: mylang-windows-amd64.exe
     steps:
       - name: Checkout source
         uses: actions/checkout@v4
@@ -25,27 +49,52 @@ jobs:
           go-version-file: go.mod
           cache: true
 
-      - name: Build release binaries
+      - name: Build CLI
+        shell: bash
         run: |
           set -euo pipefail
-          mkdir -p dist
-          for GOOS in linux darwin windows; do
-            for GOARCH in amd64 arm64; do
-              if [ "$GOOS" = "windows" ] && [ "$GOARCH" = "arm64" ]; then
-                continue
-              fi
-              ext=""
-              if [ "$GOOS" = "windows" ]; then
-                ext=".exe"
-              fi
-              CGO_ENABLED=0 GOOS=$GOOS GOARCH=$GOARCH \
-                go build -trimpath -ldflags "-s -w" \
-                -o "dist/mylang-${GOOS}-${GOARCH}${ext}" ./cmd/mylang
-            done
-          done
+          ext=""
+          if [ "${{ matrix.goos }}" = "windows" ]; then
+            ext=".exe"
+          fi
+          CGO_ENABLED=0 GOOS=${{ matrix.goos }} GOARCH=${{ matrix.goarch }} \
+            go build -trimpath -ldflags "-s -w" \
+            -o "${{ matrix.artifact_name }}" ./cmd/mylang
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact_name }}
+          path: ${{ matrix.artifact_name }}
+          retention-days: 1
+
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v4
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+
+      - name: List artifacts
+        run: ls -la dist/
+
+      - name: Create checksums
+        working-directory: dist
+        run: |
+          sha256sum * > checksums.txt
+          cat checksums.txt
 
       - name: Publish GitHub release
         uses: softprops/action-gh-release@v2
         with:
-          files: dist/*
+          files: |
+            dist/*
           generate_release_notes: true
+          draft: false
+          prerelease: ${{ contains(github.ref, '-alpha') || contains(github.ref, '-beta') || contains(github.ref, '-rc') }}
