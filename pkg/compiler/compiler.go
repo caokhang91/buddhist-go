@@ -72,7 +72,11 @@ func NewWithState(s *SymbolTable, constants []object.Object) *Compiler {
 func (c *Compiler) Compile(node ast.Node) error {
 	switch node := node.(type) {
 	case *ast.Program:
-		for _, s := range node.Statements {
+		// Apply optimizations before compilation (optional, can be disabled for debugging)
+		// The optimizer performs constant folding and other compile-time optimizations
+		optimizedProgram := OptimizeProgram(node)
+		
+		for _, s := range optimizedProgram.Statements {
 			err := c.Compile(s)
 			if err != nil {
 				return err

@@ -52,7 +52,7 @@ type (
 
 // Parser represents the parser
 type Parser struct {
-	l      *lexer.Lexer
+	l      lexer.TokenLexer // Accept interface for both standard and optimized lexer
 	errors []string
 
 	curToken  token.Token
@@ -63,10 +63,10 @@ type Parser struct {
 }
 
 // New creates a new Parser
-func New(l *lexer.Lexer) *Parser {
+func New(l lexer.TokenLexer) *Parser {
 	p := &Parser{
 		l:      l,
-		errors: []string{},
+		errors: make([]string, 0, 4), // Pre-allocate error slice
 	}
 
 	p.prefixParseFns = make(map[token.TokenType]prefixParseFn)
@@ -179,7 +179,8 @@ func (p *Parser) curPrecedence() int {
 // ParseProgram parses the program and returns the AST
 func (p *Parser) ParseProgram() *ast.Program {
 	program := &ast.Program{}
-	program.Statements = []ast.Statement{}
+	// Pre-allocate statements slice with reasonable capacity
+	program.Statements = make([]ast.Statement, 0, 32)
 
 	for !p.curTokenIs(token.EOF) {
 		stmt := p.parseStatement()
@@ -521,7 +522,8 @@ func (p *Parser) parseIfExpression() ast.Expression {
 
 func (p *Parser) parseBlockStatement() *ast.BlockStatement {
 	block := &ast.BlockStatement{Token: p.curToken}
-	block.Statements = []ast.Statement{}
+	// Pre-allocate statements with reasonable capacity
+	block.Statements = make([]ast.Statement, 0, 8)
 
 	p.nextToken()
 
@@ -561,7 +563,8 @@ func (p *Parser) parseFunctionLiteral() ast.Expression {
 }
 
 func (p *Parser) parseFunctionParameters() []*ast.Identifier {
-	identifiers := []*ast.Identifier{}
+	// Pre-allocate with reasonable capacity for function parameters
+	identifiers := make([]*ast.Identifier, 0, 4)
 
 	if p.peekTokenIs(token.RPAREN) {
 		p.nextToken()
@@ -594,7 +597,8 @@ func (p *Parser) parseCallExpression(function ast.Expression) ast.Expression {
 }
 
 func (p *Parser) parseExpressionList(end token.TokenType) []ast.Expression {
-	list := []ast.Expression{}
+	// Pre-allocate with reasonable capacity for function arguments
+	list := make([]ast.Expression, 0, 4)
 
 	if p.peekTokenIs(end) {
 		p.nextToken()

@@ -1,0 +1,138 @@
+// Intensive Benchmark - Tests VM Performance
+// This benchmark is designed to stress-test the interpreter
+
+// Test 1: Heavy Integer Arithmetic Loop
+// Benefits from integer caching optimization
+let sum = 0;
+let i = 0;
+while (i < 10000) {
+    sum = sum + i * 2 - i + 1;
+    i = i + 1;
+}
+println("Heavy arithmetic result: " + str(sum));
+
+// Test 2: Deep Recursion (Fibonacci)
+// Tests function call optimization
+let fib = fn(n) {
+    if (n <= 1) {
+        return n;
+    }
+    return fib(n - 1) + fib(n - 2);
+};
+let fibResult = fib(20);
+println("Fibonacci(20): " + str(fibResult));
+
+// Test 3: Nested Loops - Matrix-like operations
+// Tests loop performance
+let outer = 0;
+let innerSum = 0;
+while (outer < 100) {
+    let inner = 0;
+    while (inner < 100) {
+        innerSum = innerSum + outer * inner;
+        inner = inner + 1;
+    }
+    outer = outer + 1;
+}
+println("Matrix sum: " + str(innerSum));
+
+// Test 4: Array Operations
+// Tests array creation and access
+let arr = [];
+let k = 0;
+while (k < 1000) {
+    arr[] = k;
+    k = k + 1;
+}
+let arraySum = 0;
+let m = 0;
+while (m < len(arr)) {
+    arraySum = arraySum + arr[m];
+    m = m + 1;
+}
+println("Array sum: " + str(arraySum));
+
+// Test 5: String Operations
+// Tests string concatenation
+let str1 = "Hello";
+let str2 = "";
+let n = 0;
+while (n < 100) {
+    str2 = str2 + str1;
+    n = n + 1;
+}
+println("String length: " + str(len(str2)));
+
+// Test 6: Hash Map Operations
+// Tests hash creation and access
+let hash = {};
+let p = 0;
+while (p < 100) {
+    hash[str(p)] = p * 2;
+    p = p + 1;
+}
+let hashSum = 0;
+let q = 0;
+while (q < 100) {
+    hashSum = hashSum + hash[str(q)];
+    q = q + 1;
+}
+println("Hash sum: " + str(hashSum));
+
+// Test 7: Complex Expressions with Constant Folding
+// Should be optimized at compile time
+let complex1 = 10 + 20 * 3 - 5 / 1;
+let complex2 = 100 * 100 + 50 * 50;
+let complex3 = 1 + 2 + 3 + 4 + 5 + 6 + 7 + 8 + 9 + 10;
+println("Complex expressions: " + str(complex1 + complex2 + complex3));
+
+// Test 8: Higher-Order Functions
+let double = fn(x) { return x * 2; };
+let square = fn(x) { return x * x; };
+let applyTwice = fn(f, x) {
+    return f(f(x));
+};
+
+let r = 0;
+let hoResult = 0;
+while (r < 1000) {
+    hoResult = hoResult + applyTwice(double, r);
+    r = r + 1;
+}
+println("Higher-order result: " + str(hoResult));
+
+// Test 9: Comparison Operations
+// Tests comparison optimization
+let compCount = 0;
+let s = 0;
+while (s < 5000) {
+    if (s > 2500) {
+        compCount = compCount + 1;
+    }
+    if (s < 2500) {
+        compCount = compCount + 1;
+    }
+    if (s == 2500) {
+        compCount = compCount + 1;
+    }
+    s = s + 1;
+}
+println("Comparison count: " + str(compCount));
+
+// Test 10: Boolean Operations
+let boolCount = 0;
+let t = 0;
+while (t < 5000) {
+    let a = t > 1000;
+    let b = t < 4000;
+    if (a && b) {
+        boolCount = boolCount + 1;
+    }
+    if (a || b) {
+        boolCount = boolCount + 1;
+    }
+    t = t + 1;
+}
+println("Boolean count: " + str(boolCount));
+
+println("Intensive benchmark complete!");

@@ -6,6 +6,7 @@ import (
 	"io"
 	"os"
 	"strings"
+	"time"
 
 	"github.com/caokhang91/buddhist-go/pkg/compiler"
 	"github.com/caokhang91/buddhist-go/pkg/lexer"
@@ -14,7 +15,10 @@ import (
 	"github.com/caokhang91/buddhist-go/pkg/vm"
 )
 
-const VERSION = "1.0.0"
+const VERSION = "1.1.0" // Version bump for performance optimizations
+
+// UseOptimizedVM controls whether to use the optimized VM
+var UseOptimizedVM = true
 
 const BANNER = `
 ╔══════════════════════════════════════════════════════════════╗
@@ -43,6 +47,25 @@ func main() {
 		printHelp()
 	} else if args[0] == "-v" || args[0] == "--version" {
 		fmt.Printf("Buddhist Lang version %s\n", VERSION)
+	} else if args[0] == "--benchmark" || args[0] == "-b" {
+		// Benchmark mode
+		if len(args) < 2 {
+			fmt.Fprintln(os.Stderr, "Usage: buddhist-go --benchmark <file>")
+			os.Exit(1)
+		}
+		if err := benchmarkFile(args[1]); err != nil {
+			fmt.Fprintf(os.Stderr, "Error: %s\n", err)
+			os.Exit(1)
+		}
+	} else if args[0] == "--no-optimize" {
+		// Disable optimizations
+		UseOptimizedVM = false
+		if len(args) > 1 {
+			if err := executeFile(args[1]); err != nil {
+				fmt.Fprintf(os.Stderr, "Error: %s\n", err)
+				os.Exit(1)
+			}
+		}
 	} else {
 		// Execute file
 		filename := args[0]
@@ -56,10 +79,19 @@ func main() {
 func printHelp() {
 	fmt.Printf("Buddhist Lang - Go-Powered Interpreter Language (v%s)\n\n", VERSION)
 	fmt.Println("Usage:")
-	fmt.Println("  buddhist-go              Start the interactive REPL")
-	fmt.Println("  buddhist-go <file>       Execute a script file")
-	fmt.Println("  buddhist-go -h, --help   Show this help message")
-	fmt.Println("  buddhist-go -v, --version Show version information")
+	fmt.Println("  buddhist-go                    Start the interactive REPL")
+	fmt.Println("  buddhist-go <file>             Execute a script file")
+	fmt.Println("  buddhist-go -h, --help         Show this help message")
+	fmt.Println("  buddhist-go -v, --version      Show version information")
+	fmt.Println("  buddhist-go -b, --benchmark <file>  Benchmark a script file")
+	fmt.Println("  buddhist-go --no-optimize <file>    Run without optimizations")
+	fmt.Println()
+	fmt.Println("Performance Features (v1.1.0):")
+	fmt.Println("  - Optimized VM with cached frame references")
+	fmt.Println("  - Small integer caching (-128 to 256)")
+	fmt.Println("  - Constant folding at compile time")
+	fmt.Println("  - String interning for memory efficiency")
+	fmt.Println("  - Optimized lexer with byte slice processing")
 	fmt.Println()
 	fmt.Println("REPL Commands:")
 	fmt.Println("  help     Show available commands")
@@ -87,7 +119,8 @@ func executeFile(filename string) error {
 }
 
 func execute(input string) error {
-	l := lexer.New(input)
+	// Use optimized lexer
+	l := lexer.NewOptimized(input)
 	p := parser.New(l)
 	program := p.ParseProgram()
 
@@ -104,13 +137,107 @@ func execute(input string) error {
 		return fmt.Errorf("compilation error: %w", err)
 	}
 
-	machine := vm.New(comp.Bytecode())
-	err = machine.Run()
+	bytecode := comp.Bytecode()
+	
+	if UseOptimizedVM {
+		// Use optimized VM
+		machine := vm.NewOptimized(bytecode)
+		err = machine.Run()
+	} else {
+		// Use standard VM
+		machine := vm.New(bytecode)
+		err = machine.Run()
+	}
+	
 	if err != nil {
 		return fmt.Errorf("runtime error: %w", err)
 	}
 
 	return nil
+}
+
+// benchmarkFile runs a file multiple times and reports timing
+func benchmarkFile(filename string) error {
+	content, err := os.ReadFile(filename)
+	if err != nil {
+		return fmt.Errorf("could not read file %s: %w", filename, err)
+	}
+
+	input := string(content)
+	iterations := 10
+
+	fmt.Printf("Benchmarking %s (%d iterations)\n", filename, iterations)
+	fmt.Println("----------------------------------------")
+
+	// Warm up
+	for i := 0; i < 3; i++ {
+		executeBenchmark(input)
+	}
+
+	// Benchmark with optimized VM
+	UseOptimizedVM = true
+	var optimizedTotal time.Duration
+	for i := 0; i < iterations; i++ {
+		start := time.Now()
+		err := executeBenchmark(input)
+		elapsed := time.Since(start)
+		if err != nil {
+			return err
+		}
+		optimizedTotal += elapsed
+	}
+	optimizedAvg := optimizedTotal / time.Duration(iterations)
+
+	// Benchmark with standard VM
+	UseOptimizedVM = false
+	var standardTotal time.Duration
+	for i := 0; i < iterations; i++ {
+		start := time.Now()
+		err := executeBenchmark(input)
+		elapsed := time.Since(start)
+		if err != nil {
+			return err
+		}
+		standardTotal += elapsed
+	}
+	standardAvg := standardTotal / time.Duration(iterations)
+
+	fmt.Printf("Optimized VM average: %v\n", optimizedAvg)
+	fmt.Printf("Standard VM average:  %v\n", standardAvg)
+	
+	if standardAvg > 0 {
+		speedup := float64(standardAvg) / float64(optimizedAvg)
+		fmt.Printf("Speedup: %.2fx faster\n", speedup)
+	}
+
+	return nil
+}
+
+// executeBenchmark runs the code without printing output
+func executeBenchmark(input string) error {
+	l := lexer.NewOptimized(input)
+	p := parser.New(l)
+	program := p.ParseProgram()
+
+	if len(p.Errors()) != 0 {
+		return fmt.Errorf("parsing failed")
+	}
+
+	comp := compiler.New()
+	err := comp.Compile(program)
+	if err != nil {
+		return err
+	}
+
+	bytecode := comp.Bytecode()
+	
+	if UseOptimizedVM {
+		machine := vm.NewOptimized(bytecode)
+		return machine.Run()
+	}
+	
+	machine := vm.New(bytecode)
+	return machine.Run()
 }
 
 const PROMPT = ">>> "
@@ -164,8 +291,8 @@ func startREPL(in io.Reader, out io.Writer) {
 
 		input := inputBuffer.String()
 
-		// Try to parse
-		l := lexer.New(input)
+		// Try to parse using optimized lexer
+		l := lexer.NewOptimized(input)
 		p := parser.New(l)
 		program := p.ParseProgram()
 
@@ -192,17 +319,30 @@ func startREPL(in io.Reader, out io.Writer) {
 		code := comp.Bytecode()
 		constants = code.Constants
 
-		machine := vm.NewWithGlobalsStore(code, globals)
-		err = machine.Run()
-		if err != nil {
-			fmt.Fprintf(out, "Runtime error: %s\n", err)
-			continue
-		}
-
-		lastPopped := machine.LastPoppedStackElem()
-		if lastPopped != nil && lastPopped != vm.Null {
-			io.WriteString(out, lastPopped.Inspect())
-			io.WriteString(out, "\n")
+		if UseOptimizedVM {
+			machine := vm.NewOptimizedWithGlobalsStore(code, globals)
+			err = machine.Run()
+			if err != nil {
+				fmt.Fprintf(out, "Runtime error: %s\n", err)
+				continue
+			}
+			lastPopped := machine.LastPoppedStackElem()
+			if lastPopped != nil && lastPopped != vm.Null {
+				io.WriteString(out, lastPopped.Inspect())
+				io.WriteString(out, "\n")
+			}
+		} else {
+			machine := vm.NewWithGlobalsStore(code, globals)
+			err = machine.Run()
+			if err != nil {
+				fmt.Fprintf(out, "Runtime error: %s\n", err)
+				continue
+			}
+			lastPopped := machine.LastPoppedStackElem()
+			if lastPopped != nil && lastPopped != vm.Null {
+				io.WriteString(out, lastPopped.Inspect())
+				io.WriteString(out, "\n")
+			}
 		}
 	}
 }

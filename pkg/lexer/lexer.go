@@ -4,6 +4,11 @@ import (
 	"github.com/caokhang91/buddhist-go/pkg/token"
 )
 
+// TokenLexer is an interface that both Lexer and OptimizedLexer implement
+type TokenLexer interface {
+	NextToken() token.Token
+}
+
 // Lexer represents the lexical analyzer
 type Lexer struct {
 	input        string

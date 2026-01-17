@@ -6,7 +6,7 @@ import (
 	"time"
 )
 
-var enabled = true // Enabled by default
+var enabled = false // Disabled by default for performance
 
 // Enable enables tracing
 func Enable() {

@@ -3,12 +3,10 @@ package vm
 import (
 	"fmt"
 	"sync"
-	"time"
 
 	"github.com/caokhang91/buddhist-go/pkg/code"
 	"github.com/caokhang91/buddhist-go/pkg/compiler"
 	"github.com/caokhang91/buddhist-go/pkg/object"
-	"github.com/caokhang91/buddhist-go/pkg/tracing"
 )
 
 const StackSize = 2048
@@ -534,7 +532,8 @@ func (vm *VM) executeBinaryIntegerOperation(op code.Opcode, left, right object.O
 		return fmt.Errorf("unknown integer operator: %d", op)
 	}
 
-	return vm.push(&object.Integer{Value: result})
+	// Use cached integer for common values to reduce GC pressure
+	return vm.push(object.GetCachedInteger(result))
 }
 
 func (vm *VM) executeBinaryFloatOperation(op code.Opcode, left, right object.Object) error {
@@ -832,14 +831,9 @@ func (vm *VM) callClosure(cl *object.Closure, numArgs int) error {
 func (vm *VM) callBuiltin(builtin *object.Builtin, numArgs int) error {
 	args := vm.stack[vm.sp-numArgs : vm.sp]
 
-	// Trace builtin calls
-	tracing.TraceCPU("Calling builtin: %s with %d arguments", builtin.Name, numArgs)
-	builtinStart := time.Now()
-	
+	// Tracing removed from hot path for performance
+	// Use tracing.IsEnabled() && tracing.TraceCPU(...) if needed
 	result := builtin.Fn(args...)
-	
-	builtinDuration := time.Since(builtinStart)
-	tracing.TraceCPU("Builtin %s completed in %v", builtin.Name, builtinDuration)
 	
 	vm.sp = vm.sp - numArgs - 1
 
