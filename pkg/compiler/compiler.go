@@ -264,6 +264,113 @@ func (c *Compiler) Compile(node ast.Node) error {
 			c.emit(code.OpSetLocal, symbol.Index)
 		}
 
+	case *ast.ClassStatement:
+		// Compile class body to extract methods and properties
+		methods := make(map[string]*object.CompiledFunction)
+		properties := []string{}
+		var constructor *object.CompiledFunction
+
+		// Note: Parent class resolution will be done at runtime
+		// because parent class might be defined after this class
+		// We store the parent name in the class and resolve it when needed
+
+		// Process class body statements
+		for _, stmt := range node.Body.Statements {
+			switch s := stmt.(type) {
+			case *ast.LetStatement:
+				// Property declaration: let name = value;
+				// Just record the property name, don't compile the statement
+				properties = append(properties, s.Name.Value)
+			case *ast.ExpressionStatement:
+				// Could be a function literal (method) or other expression
+				if fnLit, ok := s.Expression.(*ast.FunctionLiteral); ok {
+					// This is a method definition
+					c.enterScope()
+					// 'this' will be passed as first argument, so define it as first parameter
+					c.symbolTable.Define("this")
+					
+					for _, p := range fnLit.Parameters {
+						c.symbolTable.Define(p.Value)
+					}
+
+					err := c.Compile(fnLit.Body)
+					if err != nil {
+						return err
+					}
+
+					if c.lastInstructionIs(code.OpPop) {
+						c.replaceLastPopWithReturn()
+					}
+					if !c.lastInstructionIs(code.OpReturnValue) {
+						c.emit(code.OpReturn)
+					}
+
+					numLocals := c.symbolTable.numDefinitions
+					instructions := c.leaveScope()
+
+					compiledFn := &object.CompiledFunction{
+						Instructions:  instructions,
+						NumLocals:     numLocals,
+						NumParameters: len(fnLit.Parameters) + 1, // +1 for 'this'
+					}
+
+					methodName := fnLit.Name
+					if methodName == "" {
+						// Anonymous method - skip
+						continue
+					}
+					
+					// Check if this is a constructor (named 'init' or 'constructor')
+					if methodName == "init" || methodName == "constructor" {
+						constructor = compiledFn
+					} else {
+						methods[methodName] = compiledFn
+					}
+				}
+			}
+		}
+
+		// Create class object
+		parentName := ""
+		if node.Parent != nil {
+			parentName = node.Parent.Value
+		}
+		class := &object.Class{
+			Name:       node.Name.Value,
+			Methods:    methods,
+			Properties: properties,
+			Parent:     nil, // Will be resolved at runtime
+			ParentName: parentName,
+		}
+		
+		// Store constructor separately if exists
+		if constructor != nil {
+			methods["init"] = constructor
+		}
+
+		// Add class to constants and emit OpClass
+		classIndex := c.addConstant(class)
+		c.emit(code.OpClass, classIndex)
+
+		// Store class in global scope
+		symbol := c.symbolTable.Define(node.Name.Value)
+		if symbol.Scope == GlobalScope {
+			c.emit(code.OpSetGlobal, symbol.Index)
+		} else {
+			c.emit(code.OpSetLocal, symbol.Index)
+		}
+		
+		// If parent exists, we need to resolve it after both classes are defined
+		// For now, we'll resolve it at runtime when the class is instantiated
+
+	case *ast.ThisExpression:
+		// Push 'this' onto stack
+		c.emit(code.OpThis)
+
+	case *ast.SuperExpression:
+		// Push 'super' onto stack
+		c.emit(code.OpSuper)
+
 	case *ast.Identifier:
 		symbol, ok := c.symbolTable.Resolve(node.Value)
 		if !ok {
@@ -349,6 +456,23 @@ func (c *Compiler) Compile(node ast.Node) error {
 		if node.Index == nil {
 			return fmt.Errorf("index expression requires index")
 		}
+		
+		// Check if this is property access (obj.property)
+		if ident, ok := node.Index.(*ast.Identifier); ok {
+			// Property access - use OpGetProperty
+			err := c.Compile(node.Left)
+			if err != nil {
+				return err
+			}
+			// Push property name as string
+			propName := &object.String{Value: ident.Value}
+			propNameIndex := c.addConstant(propName)
+			c.emit(code.OpConstant, propNameIndex)
+			c.emit(code.OpGetProperty)
+			return nil
+		}
+		
+		// Regular index access (arr[index] or hash[key])
 		err := c.Compile(node.Left)
 		if err != nil {
 			return err
@@ -371,6 +495,22 @@ func (c *Compiler) Compile(node ast.Node) error {
 			}
 			c.emit(code.OpArrayPush)
 		} else {
+			// Check if this is property assignment (obj.property = value)
+			if ident, ok := node.Index.(*ast.Identifier); ok {
+				// Property assignment - use OpSetProperty
+				propName := &object.String{Value: ident.Value}
+				propNameIndex := c.addConstant(propName)
+				c.emit(code.OpConstant, propNameIndex)
+				err = c.Compile(node.Value)
+				if err != nil {
+					return err
+				}
+				c.emit(code.OpSetProperty)
+				// Push the assigned value back (it's already on stack from OpSetProperty)
+				return nil
+			}
+			
+			// Regular index assignment (arr[index] = value)
 			err = c.Compile(node.Index)
 			if err != nil {
 				return err
@@ -442,6 +582,32 @@ func (c *Compiler) Compile(node ast.Node) error {
 		c.emit(code.OpSend)
 
 	case *ast.CallExpression:
+		// Check if this is a method call (obj.method())
+		if indexExp, ok := node.Function.(*ast.IndexExpression); ok {
+			if ident, ok := indexExp.Index.(*ast.Identifier); ok {
+				// This is obj.method() - compile as method call
+				err := c.Compile(indexExp.Left)
+				if err != nil {
+					return err
+				}
+				// Push method name as string
+				methodName := &object.String{Value: ident.Value}
+				methodNameIndex := c.addConstant(methodName)
+				c.emit(code.OpConstant, methodNameIndex)
+
+				for _, a := range node.Arguments {
+					err := c.Compile(a)
+					if err != nil {
+						return err
+					}
+				}
+
+				c.emit(code.OpCallMethod, len(node.Arguments))
+				return nil
+			}
+		}
+
+		// Regular function call
 		err := c.Compile(node.Function)
 		if err != nil {
 			return err

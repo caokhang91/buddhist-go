@@ -299,6 +299,168 @@ func (vm *VM) Run() error {
 				return err
 			}
 
+		case code.OpClass:
+			constIndex := code.ReadUint16(ins[ip+1:])
+			vm.currentFrame().ip += 2
+			// Class is already in constants, just push it
+			err := vm.push(vm.constants[constIndex])
+			if err != nil {
+				return err
+			}
+
+		case code.OpInstantiate:
+			numArgs := int(code.ReadUint8(ins[ip+1:]))
+			vm.currentFrame().ip += 1
+
+			class := vm.stack[vm.sp-1-numArgs]
+			classObj, ok := class.(*object.Class)
+			if !ok {
+				return fmt.Errorf("not a class: %s", class.Type())
+			}
+
+			// Create instance
+			instance := &object.Instance{
+				Class:  classObj,
+				Fields: make(map[string]object.Object),
+			}
+
+			// Initialize properties with arguments or null
+			args := vm.stack[vm.sp-numArgs : vm.sp]
+			for i, propName := range classObj.Properties {
+				if i < len(args) {
+					instance.Fields[propName] = args[i]
+				} else {
+					instance.Fields[propName] = Null
+				}
+			}
+
+			vm.sp = vm.sp - numArgs - 1
+			err := vm.push(instance)
+			if err != nil {
+				return err
+			}
+
+		case code.OpGetProperty:
+			propName := vm.pop()
+			instance := vm.pop()
+
+			instanceObj, ok := instance.(*object.Instance)
+			if !ok {
+				return fmt.Errorf("only instances have properties, got %s", instance.Type())
+			}
+
+			propNameStr, ok := propName.(*object.String)
+			if !ok {
+				return fmt.Errorf("property name must be string, got %s", propName.Type())
+			}
+
+			// Check if it's a method (search in current class and parent classes)
+			method := findMethod(instanceObj.Class, propNameStr.Value)
+			if method != nil {
+				// Return a bound method (closure with instance as first free variable)
+				closure := &object.Closure{
+					Fn:   method,
+					Free: []object.Object{instanceObj},
+				}
+				return vm.push(closure)
+			}
+
+			// Check if it's a field
+			if field, ok := instanceObj.Fields[propNameStr.Value]; ok {
+				return vm.push(field)
+			}
+
+			// Property doesn't exist
+			return vm.push(Null)
+
+		case code.OpSetProperty:
+			value := vm.pop()
+			propName := vm.pop()
+			instance := vm.pop()
+
+			instanceObj, ok := instance.(*object.Instance)
+			if !ok {
+				return fmt.Errorf("only instances have properties, got %s", instance.Type())
+			}
+
+			propNameStr, ok := propName.(*object.String)
+			if !ok {
+				return fmt.Errorf("property name must be string, got %s", propName.Type())
+			}
+
+			instanceObj.Fields[propNameStr.Value] = value
+			// Push the assigned value back
+			return vm.push(value)
+
+		case code.OpGetMethod:
+			methodNameIndex := code.ReadUint16(ins[ip+1:])
+			vm.currentFrame().ip += 2
+
+			methodName := vm.constants[methodNameIndex].(*object.String)
+			instance := vm.pop()
+
+			instanceObj, ok := instance.(*object.Instance)
+			if !ok {
+				return fmt.Errorf("only instances have methods, got %s", instance.Type())
+			}
+
+			// Search for method in class hierarchy
+			method := findMethod(instanceObj.Class, methodName.Value)
+			if method == nil {
+				return vm.push(Null)
+			}
+
+			// Create bound method (closure with instance as first free variable)
+			closure := &object.Closure{
+				Fn:   method,
+				Free: []object.Object{instanceObj},
+			}
+			return vm.push(closure)
+
+		case code.OpCallMethod:
+			numArgs := int(code.ReadUint8(ins[ip+1:]))
+			vm.currentFrame().ip += 1
+
+			method := vm.stack[vm.sp-1-numArgs]
+			closure, ok := method.(*object.Closure)
+			if !ok {
+				return fmt.Errorf("calling non-method: %s", method.Type())
+			}
+
+			// Get instance from free variables (first free var is 'this')
+			if len(closure.Free) == 0 {
+				return fmt.Errorf("method has no bound instance")
+			}
+			instance := closure.Free[0]
+
+			// Push instance as first argument (this)
+			args := vm.stack[vm.sp-numArgs : vm.sp]
+			vm.sp = vm.sp - numArgs - 1
+
+			// Create new closure with instance bound
+			boundClosure := &object.Closure{
+				Fn:   closure.Fn,
+				Free: []object.Object{instance},
+			}
+
+			// Push bound closure and arguments
+			vm.push(boundClosure)
+			for _, arg := range args {
+				vm.push(arg)
+			}
+
+			// Call the method
+			return vm.callClosure(boundClosure, numArgs+1) // +1 for 'this'
+
+		case code.OpThis:
+			// Get 'this' from the first local variable (which is 'this' parameter)
+			frame := vm.currentFrame()
+			if frame.basePointer >= 0 && frame.basePointer < len(vm.stack) {
+				// 'this' is the first local variable (at basePointer)
+				return vm.push(vm.stack[frame.basePointer])
+			}
+			return fmt.Errorf("'this' is not available in this context")
+
 		case code.OpReturnValue:
 			returnValue := vm.pop()
 
@@ -806,6 +968,8 @@ func (vm *VM) executeIndexExpression(left, index object.Object) error {
 		return vm.executeHashIndex(left, index)
 	case left.Type() == object.STRING_OBJ && index.Type() == object.INTEGER_OBJ:
 		return vm.executeStringIndex(left, index)
+	case left.Type() == object.INSTANCE_OBJ:
+		return vm.executeInstanceProperty(left, index)
 	default:
 		return fmt.Errorf("index operator not supported: %s", left.Type())
 	}
@@ -851,6 +1015,54 @@ func (vm *VM) executeStringIndex(str, index object.Object) error {
 	return vm.push(&object.String{Value: string(strObject.Value[i])})
 }
 
+func (vm *VM) executeInstanceProperty(instance, prop object.Object) error {
+	instanceObj := instance.(*object.Instance)
+
+	// Property name must be a string
+	propName, ok := prop.(*object.String)
+	if !ok {
+		return fmt.Errorf("property name must be string, got %s", prop.Type())
+	}
+
+	// Check if it's a method (search in class hierarchy)
+	method := findMethod(instanceObj.Class, propName.Value)
+	if method != nil {
+		// Return a bound method (closure with instance as first free variable)
+		closure := &object.Closure{
+			Fn:   method,
+			Free: []object.Object{instanceObj},
+		}
+		return vm.push(closure)
+	}
+
+	// Check if it's a field
+	if field, ok := instanceObj.Fields[propName.Value]; ok {
+		return vm.push(field)
+	}
+
+	// Property doesn't exist
+	return vm.push(Null)
+}
+
+// findMethod searches for a method in the class hierarchy
+func findMethod(class *object.Class, methodName string) *object.CompiledFunction {
+	// Search in current class
+	if method, ok := class.Methods[methodName]; ok {
+		return method
+	}
+	
+	// Search in parent classes
+	current := class
+	for current.Parent != nil {
+		current = current.Parent
+		if method, ok := current.Methods[methodName]; ok {
+			return method
+		}
+	}
+	
+	return nil
+}
+
 func (vm *VM) executeCall(numArgs int) error {
 	callee := vm.stack[vm.sp-1-numArgs]
 	switch callee := callee.(type) {
@@ -858,9 +1070,65 @@ func (vm *VM) executeCall(numArgs int) error {
 		return vm.callClosure(callee, numArgs)
 	case *object.Builtin:
 		return vm.callBuiltin(callee, numArgs)
+	case *object.Class:
+		// Class instantiation: MyClass() creates an instance
+		return vm.instantiateClass(callee, numArgs)
 	default:
 		return fmt.Errorf("calling non-function and non-builtin")
 	}
+}
+
+func (vm *VM) instantiateClass(class *object.Class, numArgs int) error {
+	// Create instance
+	instance := &object.Instance{
+		Class:  class,
+		Fields: make(map[string]object.Object),
+	}
+
+	// Initialize properties with arguments or null
+	args := vm.stack[vm.sp-numArgs : vm.sp]
+	for i, propName := range class.Properties {
+		if i < len(args) {
+			instance.Fields[propName] = args[i]
+		} else {
+			instance.Fields[propName] = Null
+		}
+	}
+
+	vm.sp = vm.sp - numArgs - 1
+	
+	// Call constructor if it exists
+	if constructor, ok := class.Methods["init"]; ok {
+		// Push instance as 'this'
+		vm.push(instance)
+		// Push constructor arguments
+		for _, arg := range args {
+			vm.push(arg)
+		}
+		
+		// Create closure for constructor
+		constructorClosure := &object.Closure{
+			Fn:   constructor,
+			Free: []object.Object{instance},
+		}
+		
+		// Call constructor
+		err := vm.callClosure(constructorClosure, numArgs+1) // +1 for 'this'
+		if err != nil {
+			return err
+		}
+		
+		// Constructor may have modified instance, but we still return the instance
+		// Pop any return value from constructor
+		if vm.sp > 0 && vm.stack[vm.sp-1] != instance {
+			vm.pop()
+		}
+		vm.push(instance)
+	} else {
+		vm.push(instance)
+	}
+	
+	return nil
 }
 
 func (vm *VM) callClosure(cl *object.Closure, numArgs int) error {

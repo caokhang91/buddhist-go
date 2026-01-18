@@ -1,0 +1,44 @@
+// Inheritance and Constructor Example - Buddhist Lang
+
+println("=== Inheritance Example ===");
+
+// Base class
+class Animal {
+    let name = null;
+    
+    fn init(n) {
+        this.name = n;
+    }
+    
+    fn speak() {
+        return this.name + " makes a sound";
+    }
+}
+
+// Derived class
+class Dog extends Animal {
+    let breed = null;
+    
+    fn init(n, b) {
+        this.name = n;
+        this.breed = b;
+    }
+    
+    fn speak() {
+        return this.name + " barks!";
+    }
+    
+    fn getInfo() {
+        return this.name + " is a " + this.breed;
+    }
+}
+
+// Create instances
+let animal = Animal("Generic Animal");
+println(animal.speak());
+
+let dog = Dog("Buddy", "Golden Retriever");
+println(dog.speak());
+println(dog.getInfo());
+
+println("\n=== Demo Complete ===");

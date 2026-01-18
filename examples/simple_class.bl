@@ -1,0 +1,18 @@
+// Simple Class Test
+
+class Person {
+    let name = null;
+    
+    fn init(n) {
+        this.name = n;
+        println("Constructor called with: " + n);
+    }
+    
+    fn greet() {
+        return "Hello, I'm " + this.name;
+    }
+}
+
+let p = Person("Alice");
+println("Created person");
+println(p.greet());
