@@ -4,7 +4,7 @@ println("=== Inheritance Example ===");
 
 // Base class
 class Animal {
-    let name = null;
+    place name = null;
     
     fn init(n) {
         this.name = n;
@@ -17,7 +17,7 @@ class Animal {
 
 // Derived class
 class Dog extends Animal {
-    let breed = null;
+    place breed = null;
     
     fn init(n, b) {
         this.name = n;
@@ -34,10 +34,10 @@ class Dog extends Animal {
 }
 
 // Create instances
-let animal = Animal("Generic Animal");
+place animal = Animal("Generic Animal");
 println(animal.speak());
 
-let dog = Dog("Buddy", "Golden Retriever");
+place dog = Dog("Buddy", "Golden Retriever");
 println(dog.speak());
 println(dog.getInfo());
 

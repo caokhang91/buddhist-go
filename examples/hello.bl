@@ -4,13 +4,13 @@ println("=== Buddhist Lang Demo ===");
 println("");
 
 // Variables
-let name = "Buddhist";
-let version = 1.0;
+place name = "Buddhist";
+place version = 1.0;
 println("Language: " + name);
 
 // Arithmetic
-let a = 10;
-let b = 3;
+place a = 10;
+place b = 3;
 println("10 + 3 = " + str(a + b));
 println("10 - 3 = " + str(a - b));
 println("10 * 3 = " + str(a * b));
@@ -18,7 +18,7 @@ println("10 / 3 = " + str(a / b));
 println("10 % 3 = " + str(a % b));
 
 // Functions
-let fibonacci = fn(n) {
+place fibonacci = fn(n) {
     if (n <= 1) {
         return n;
     }
@@ -27,7 +27,7 @@ let fibonacci = fn(n) {
 
 println("");
 println("Fibonacci sequence:");
-let i = 0;
+place i = 0;
 while (i < 10) {
     print(str(fibonacci(i)) + " ");
     i = i + 1;
@@ -37,7 +37,7 @@ println("");
 // Arrays
 println("");
 println("Array operations:");
-let arr = [1, 2, 3, 4, 5];
+place arr = [1, 2, 3, 4, 5];
 println("Array: " + str(arr));
 println("Length: " + str(len(arr)));
 println("First: " + str(first(arr)));
@@ -47,15 +47,15 @@ println("Rest: " + str(rest(arr)));
 // Hash Maps
 println("");
 println("Hash map operations:");
-let person = {"name": "Buddhist", "age": 1, "language": "Go"};
+place person = {"name": "Buddhist", "age": 1, "language": "Go"};
 println("Name: " + person["name"]);
 println("Age: " + str(person["age"]));
 println("Language: " + person["language"]);
 
 // Higher-order functions
-let map = fn(arr, f) {
-    let result = [];
-    let i = 0;
+place map = fn(arr, f) {
+    place result = [];
+    place i = 0;
     while (i < len(arr)) {
         result = push(result, f(arr[i]));
         i = i + 1;
@@ -63,12 +63,12 @@ let map = fn(arr, f) {
     return result;
 };
 
-let double = fn(x) { x * 2 };
+place double = fn(x) { x * 2 };
 
 println("");
 println("Map example (double each element):");
-let numbers = [1, 2, 3, 4, 5];
-let doubled = map(numbers, double);
+place numbers = [1, 2, 3, 4, 5];
+place doubled = map(numbers, double);
 println("Original: " + str(numbers));
 println("Doubled: " + str(doubled));
 

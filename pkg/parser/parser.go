@@ -139,6 +139,18 @@ func (p *Parser) expectPeek(t token.TokenType) bool {
 		return true
 	}
 	p.peekError(t)
+	// Fail-fast: return false immediately on error
+	return false
+}
+
+// expectPeekFailFast is like expectPeek but stops parsing on error
+func (p *Parser) expectPeekFailFast(t token.TokenType) bool {
+	if p.peekTokenIs(t) {
+		p.nextToken()
+		return true
+	}
+	p.peekError(t)
+	// Fail-fast: stop parsing immediately
 	return false
 }
 
@@ -200,8 +212,10 @@ func (p *Parser) ParseProgram() *ast.Program {
 
 func (p *Parser) parseStatement() ast.Statement {
 	switch p.curToken.Type {
-	case token.LET:
+	case token.PLACE:
 		return p.parseLetStatement()
+	case token.SET:
+		return p.parseSetStatement()
 	case token.CONST:
 		return p.parseConstStatement()
 	case token.RETURN:
@@ -223,6 +237,30 @@ func (p *Parser) parseStatement() ast.Statement {
 
 func (p *Parser) parseLetStatement() *ast.LetStatement {
 	stmt := &ast.LetStatement{Token: p.curToken}
+
+	if !p.expectPeek(token.IDENT) {
+		return nil
+	}
+
+	stmt.Name = &ast.Identifier{Token: p.curToken, Value: p.curToken.Literal}
+
+	if !p.expectPeek(token.ASSIGN) {
+		return nil
+	}
+
+	p.nextToken()
+
+	stmt.Value = p.parseExpression(LOWEST)
+
+	if p.peekTokenIs(token.SEMICOLON) {
+		p.nextToken()
+	}
+
+	return stmt
+}
+
+func (p *Parser) parseSetStatement() *ast.SetStatement {
+	stmt := &ast.SetStatement{Token: p.curToken}
 
 	if !p.expectPeek(token.IDENT) {
 		return nil
@@ -339,22 +377,45 @@ func (p *Parser) parseForStatement() *ast.ForStatement {
 func (p *Parser) parseWhileStatement() *ast.WhileStatement {
 	stmt := &ast.WhileStatement{Token: p.curToken}
 
-	if !p.expectPeek(token.LPAREN) {
+	// Fail-fast: stop immediately on parsing errors
+	if !p.expectPeekFailFast(token.LPAREN) {
 		return nil
 	}
 
 	p.nextToken()
 	stmt.Condition = p.parseExpression(LOWEST)
+	if stmt.Condition == nil {
+		return nil // Fail-fast: stop if condition parsing failed
+	}
 
-	if !p.expectPeek(token.RPAREN) {
+	if !p.expectPeekFailFast(token.RPAREN) {
 		return nil
 	}
 
-	if !p.expectPeek(token.LBRACE) {
+	if !p.expectPeekFailFast(token.LBRACE) {
 		return nil
 	}
 
 	stmt.Body = p.parseBlockStatement()
+	if stmt.Body == nil {
+		return nil // Fail-fast: stop if body parsing failed
+	}
+
+	// Check for optional until clause
+	if p.peekTokenIs(token.UNTIL) {
+		p.nextToken() // consume 'until'
+		if !p.expectPeekFailFast(token.LPAREN) {
+			return nil // Fail-fast: stop parsing on error
+		}
+		p.nextToken()
+		stmt.Until = p.parseExpression(LOWEST)
+		if stmt.Until == nil {
+			return nil // Fail-fast: stop if expression parsing failed
+		}
+		if !p.expectPeekFailFast(token.RPAREN) {
+			return nil // Fail-fast: stop parsing on error
+		}
+	}
 
 	return stmt
 }

@@ -2,8 +2,8 @@
 println("=== Testing if not syntax ===");
 println("");
 
-let x = 5;
-let y = 0;
+place x = 5;
+place y = 0;
 
 // Test 1: if not (condition) then
 println("Test 1: if not (x == 0) then");

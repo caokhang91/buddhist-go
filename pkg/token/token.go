@@ -60,7 +60,8 @@ const (
 
 	// Keywords
 	FUNCTION TokenType = "FUNCTION"
-	LET      TokenType = "LET"
+	PLACE    TokenType = "PLACE"
+	SET      TokenType = "SET"
 	CONST    TokenType = "CONST"
 	TRUE     TokenType = "TRUE"
 	FALSE    TokenType = "FALSE"
@@ -71,6 +72,7 @@ const (
 	RETURN   TokenType = "RETURN"
 	FOR      TokenType = "FOR"
 	WHILE    TokenType = "WHILE"
+	UNTIL    TokenType = "UNTIL"
 	BREAK    TokenType = "BREAK"
 	CONTINUE TokenType = "CONTINUE"
 	NULL     TokenType = "NULL"
@@ -102,7 +104,8 @@ const (
 // keywords maps keyword strings to their token types
 var keywords = map[string]TokenType{
 	"fn":       FUNCTION,
-	"let":      LET,
+	"place":   PLACE,
+	"set":      SET,
 	"const":    CONST,
 	"true":     TRUE,
 	"false":    FALSE,
@@ -113,6 +116,7 @@ var keywords = map[string]TokenType{
 	"return":   RETURN,
 	"for":      FOR,
 	"while":    WHILE,
+	"until":    UNTIL,
 	"break":    BREAK,
 	"continue": CONTINUE,
 	"null":     NULL,

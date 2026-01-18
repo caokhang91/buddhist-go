@@ -1,7 +1,7 @@
 // Simple Class Test
 
 class Person {
-    let name = null;
+    place name = null;
     
     fn init(n) {
         this.name = n;
@@ -13,6 +13,6 @@ class Person {
     }
 }
 
-let p = Person("Alice");
+place p = Person("Alice");
 println("Created person");
 println(p.greet());

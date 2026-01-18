@@ -251,6 +251,27 @@ func (c *Compiler) Compile(node ast.Node) error {
 			c.emit(code.OpGetLocal, symbol.Index) // Push the assigned value back
 		}
 
+	case *ast.SetStatement:
+		// Set statement: set x = value;
+		// This is an assignment to an existing variable
+		symbol, ok := c.symbolTable.Resolve(node.Name.Value)
+		if !ok {
+			return fmt.Errorf("undefined variable %s", node.Name.Value)
+		}
+
+		err := c.Compile(node.Value)
+		if err != nil {
+			return err
+		}
+
+		if symbol.Scope == GlobalScope {
+			c.emit(code.OpSetGlobal, symbol.Index)
+			c.emit(code.OpGetGlobal, symbol.Index) // Push the assigned value back
+		} else {
+			c.emit(code.OpSetLocal, symbol.Index)
+			c.emit(code.OpGetLocal, symbol.Index) // Push the assigned value back
+		}
+
 	case *ast.ConstStatement:
 		symbol := c.symbolTable.Define(node.Name.Value)
 		err := c.Compile(node.Value)
@@ -278,7 +299,7 @@ func (c *Compiler) Compile(node ast.Node) error {
 		for _, stmt := range node.Body.Statements {
 			switch s := stmt.(type) {
 			case *ast.LetStatement:
-				// Property declaration: let name = value;
+				// Property declaration: place name = value;
 				// Just record the property name, don't compile the statement
 				properties = append(properties, s.Name.Value)
 			case *ast.ExpressionStatement:
@@ -625,6 +646,7 @@ func (c *Compiler) Compile(node ast.Node) error {
 	case *ast.WhileStatement:
 		loopStart := len(c.currentInstructions())
 
+		// Check main condition
 		err := c.Compile(node.Condition)
 		if err != nil {
 			return err
@@ -632,15 +654,37 @@ func (c *Compiler) Compile(node ast.Node) error {
 
 		jumpNotTruthyPos := c.emit(code.OpJumpNotTruthy, 9999)
 
+		// Compile body
 		err = c.Compile(node.Body)
 		if err != nil {
 			return err
 		}
 
+		// Check until condition if it exists
+		var jumpUntilPos int
+		if node.Until != nil {
+			err = c.Compile(node.Until)
+			if err != nil {
+				return err
+			}
+			// Negate the until condition: if until is true, we want to exit
+			// OpBang will make true -> false, false -> true
+			// Then OpJumpNotTruthy will jump if the negated value is false (i.e., original until was true)
+			c.emit(code.OpBang)
+			// If until is true (now false after negation), jump to afterLoop
+			jumpUntilPos = c.emit(code.OpJumpNotTruthy, 9999)
+		}
+
+		// Jump back to loop start
 		c.emit(code.OpJump, loopStart)
 
 		afterLoopPos := len(c.currentInstructions())
 		c.changeOperand(jumpNotTruthyPos, afterLoopPos)
+		
+		// Fix until jump if it exists
+		if node.Until != nil {
+			c.changeOperand(jumpUntilPos, afterLoopPos)
+		}
 
 	case *ast.ForStatement:
 		// Compile init

@@ -1,0 +1,10 @@
+// Fail-fast test - should stop on first error
+
+println("Testing fail-fast...");
+
+// This should fail fast on the first syntax error
+while (i < 10) {
+    i = i + 1;
+} until (i > 5  // Missing closing parenthesis - should fail immediately
+
+println("This should not be reached");
