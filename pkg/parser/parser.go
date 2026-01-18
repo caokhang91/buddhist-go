@@ -502,6 +502,12 @@ func (p *Parser) parseIfExpression() ast.Expression {
 		return nil
 	}
 
+	// Support optional "then" keyword (e.g., "if (condition) then { ... }")
+	// If next token is THEN, consume it (optional)
+	if p.peekTokenIs(token.THEN) {
+		p.nextToken()
+	}
+
 	if !p.expectPeek(token.LBRACE) {
 		return nil
 	}
@@ -511,11 +517,33 @@ func (p *Parser) parseIfExpression() ast.Expression {
 	if p.peekTokenIs(token.ELSE) {
 		p.nextToken()
 
-		if !p.expectPeek(token.LBRACE) {
-			return nil
+		// Support "else if" - check if next token is IF
+		if p.peekTokenIs(token.IF) {
+			// Advance to IF token before parsing
+			p.nextToken()
+			// Parse "else if" as a nested if expression wrapped in a block statement
+			ifExpr := p.parseIfExpression()
+			if ifExpr == nil {
+				return nil
+			}
+			// Wrap the if expression in a block statement containing an expression statement
+			block := &ast.BlockStatement{
+				Token:      token.Token{Type: token.LBRACE, Literal: "{"},
+				Statements: []ast.Statement{
+					&ast.ExpressionStatement{
+						Token:      token.Token{Type: token.IF, Literal: "if"},
+						Expression: ifExpr,
+					},
+				},
+			}
+			expression.Alternative = block
+		} else {
+			// Regular "else" block
+			if !p.expectPeek(token.LBRACE) {
+				return nil
+			}
+			expression.Alternative = p.parseBlockStatement()
 		}
-
-		expression.Alternative = p.parseBlockStatement()
 	}
 
 	return expression

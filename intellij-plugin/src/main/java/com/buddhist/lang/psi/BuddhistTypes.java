@@ -20,6 +20,7 @@ public class BuddhistTypes {
     public static final IElementType FALSE = new BuddhistElementType("FALSE");
     public static final IElementType IF = new BuddhistElementType("IF");
     public static final IElementType ELSE = new BuddhistElementType("ELSE");
+    public static final IElementType THEN = new BuddhistElementType("THEN");
     public static final IElementType RETURN = new BuddhistElementType("RETURN");
     public static final IElementType FOR = new BuddhistElementType("FOR");
     public static final IElementType WHILE = new BuddhistElementType("WHILE");
