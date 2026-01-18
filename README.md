@@ -69,8 +69,8 @@ Hello, World!
 
 ```javascript
 place x = 5;
-const PI = 3.14159;
-x = x + 1;
+const PI = 3.14;
+set x = x + 1;
 ```
 
 ### Functions

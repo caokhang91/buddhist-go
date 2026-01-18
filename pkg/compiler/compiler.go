@@ -477,21 +477,39 @@ func (c *Compiler) Compile(node ast.Node) error {
 		}
 		
 		// Check if this is property access (obj.property)
+		// Only use OpGetProperty if Left is 'this' or 'super' (guaranteed to be instance)
 		if ident, ok := node.Index.(*ast.Identifier); ok {
-			// Property access - use OpGetProperty
-			err := c.Compile(node.Left)
-			if err != nil {
-				return err
+			// Check if Left is 'this' or 'super' - these are guaranteed to be instances
+			if _, ok := node.Left.(*ast.ThisExpression); ok {
+				// Property access on 'this' - use OpGetProperty
+				err := c.Compile(node.Left)
+				if err != nil {
+					return err
+				}
+				// Push property name as string
+				propName := &object.String{Value: ident.Value}
+				propNameIndex := c.addConstant(propName)
+				c.emit(code.OpConstant, propNameIndex)
+				c.emit(code.OpGetProperty)
+				return nil
 			}
-			// Push property name as string
-			propName := &object.String{Value: ident.Value}
-			propNameIndex := c.addConstant(propName)
-			c.emit(code.OpConstant, propNameIndex)
-			c.emit(code.OpGetProperty)
-			return nil
+			if _, ok := node.Left.(*ast.SuperExpression); ok {
+				// Property access on 'super' - use OpGetProperty
+				err := c.Compile(node.Left)
+				if err != nil {
+					return err
+				}
+				// Push property name as string
+				propName := &object.String{Value: ident.Value}
+				propNameIndex := c.addConstant(propName)
+				c.emit(code.OpConstant, propNameIndex)
+				c.emit(code.OpGetProperty)
+				return nil
+			}
+			// For other cases, use OpIndex (will handle both arrays and instances at runtime)
 		}
 		
-		// Regular index access (arr[index] or hash[key])
+		// Regular index access (arr[index] or hash[key] or obj.property)
 		err := c.Compile(node.Left)
 		if err != nil {
 			return err

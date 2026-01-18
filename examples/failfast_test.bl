@@ -8,3 +8,4 @@ while (i < 10) {
 } until (i > 5  // Missing closing parenthesis - should fail immediately
 
 println("This should not be reached");
+place i = 0;

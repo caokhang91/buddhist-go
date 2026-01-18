@@ -560,6 +560,26 @@ func (vm *VM) Run() error {
 
 			instanceObj, ok := instance.(*object.Instance)
 			if !ok {
+				// Not an instance - try to fallback to index operation
+				// This handles cases like arr.property where property is a string
+				// For arrays, we can't use string as index, so return error
+				// But for hashes, we can use string as key
+				if hash, ok := instance.(*object.Hash); ok {
+					// Try to use as hash key
+					key, ok := propName.(object.Hashable)
+					if !ok {
+						return fmt.Errorf("only instances have properties, got %s", instance.Type())
+					}
+					pair, ok := hash.Pairs[key.HashKey()]
+					if !ok {
+						vm.stack[vm.sp] = Null
+						vm.sp++
+						continue
+					}
+					vm.stack[vm.sp] = pair.Value
+					vm.sp++
+					continue
+				}
 				return fmt.Errorf("only instances have properties, got %s", instance.Type())
 			}
 
