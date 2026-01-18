@@ -245,10 +245,8 @@ func (c *Compiler) Compile(node ast.Node) error {
 
 		if symbol.Scope == GlobalScope {
 			c.emit(code.OpSetGlobal, symbol.Index)
-			c.emit(code.OpGetGlobal, symbol.Index) // Push the assigned value back
 		} else {
 			c.emit(code.OpSetLocal, symbol.Index)
-			c.emit(code.OpGetLocal, symbol.Index) // Push the assigned value back
 		}
 
 	case *ast.ConstStatement:

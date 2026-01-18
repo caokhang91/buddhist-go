@@ -17,9 +17,6 @@ import (
 
 const VERSION = "1.0.0"
 
-// UseOptimizedVM controls whether to use the optimized VM
-var UseOptimizedVM = true
-
 const BANNER = `
 ╔══════════════════════════════════════════════════════════════╗
 ║     ____            _     _ _     _     _                    ║
@@ -57,15 +54,6 @@ func main() {
 			fmt.Fprintf(os.Stderr, "Error: %s\n", err)
 			os.Exit(1)
 		}
-	} else if args[0] == "--no-optimize" {
-		// Disable optimizations
-		UseOptimizedVM = false
-		if len(args) > 1 {
-			if err := executeFile(args[1]); err != nil {
-				fmt.Fprintf(os.Stderr, "Error: %s\n", err)
-				os.Exit(1)
-			}
-		}
 	} else {
 		// Execute file
 		filename := args[0]
@@ -84,10 +72,10 @@ func printHelp() {
 	fmt.Println("  buddhist-go -h, --help         Show this help message")
 	fmt.Println("  buddhist-go -v, --version      Show version information")
 	fmt.Println("  buddhist-go -b, --benchmark <file>  Benchmark a script file")
-	fmt.Println("  buddhist-go --no-optimize <file>    Run without optimizations")
 	fmt.Println()
 	fmt.Println("Performance Features (v1.0.0):")
-	fmt.Println("  - Optimized VM with cached frame references")
+	fmt.Println("  - Optimized VM with inlined operations and cached frame references")
+	fmt.Println("  - Fast paths for integer arithmetic and comparisons")
 	fmt.Println("  - Small integer caching (-128 to 256)")
 	fmt.Println("  - Constant folding at compile time")
 	fmt.Println("  - String interning for memory efficiency")
@@ -138,17 +126,8 @@ func execute(input string) error {
 	}
 
 	bytecode := comp.Bytecode()
-	
-	if UseOptimizedVM {
-		// Use optimized VM
-		machine := vm.NewOptimized(bytecode)
-		err = machine.Run()
-	} else {
-		// Use standard VM
-		machine := vm.New(bytecode)
-		err = machine.Run()
-	}
-	
+	machine := vm.New(bytecode)
+	err = machine.Run()
 	if err != nil {
 		return fmt.Errorf("runtime error: %w", err)
 	}
@@ -174,9 +153,9 @@ func benchmarkFile(filename string) error {
 		executeBenchmark(input)
 	}
 
-	// Benchmark with optimized VM
-	UseOptimizedVM = true
-	var optimizedTotal time.Duration
+	// Run benchmark
+	var total time.Duration
+	var minTime, maxTime time.Duration
 	for i := 0; i < iterations; i++ {
 		start := time.Now()
 		err := executeBenchmark(input)
@@ -184,31 +163,20 @@ func benchmarkFile(filename string) error {
 		if err != nil {
 			return err
 		}
-		optimizedTotal += elapsed
-	}
-	optimizedAvg := optimizedTotal / time.Duration(iterations)
-
-	// Benchmark with standard VM
-	UseOptimizedVM = false
-	var standardTotal time.Duration
-	for i := 0; i < iterations; i++ {
-		start := time.Now()
-		err := executeBenchmark(input)
-		elapsed := time.Since(start)
-		if err != nil {
-			return err
+		total += elapsed
+		if i == 0 || elapsed < minTime {
+			minTime = elapsed
 		}
-		standardTotal += elapsed
+		if elapsed > maxTime {
+			maxTime = elapsed
+		}
 	}
-	standardAvg := standardTotal / time.Duration(iterations)
+	avg := total / time.Duration(iterations)
 
-	fmt.Printf("Optimized VM average: %v\n", optimizedAvg)
-	fmt.Printf("Standard VM average:  %v\n", standardAvg)
-	
-	if standardAvg > 0 {
-		speedup := float64(standardAvg) / float64(optimizedAvg)
-		fmt.Printf("Speedup: %.2fx faster\n", speedup)
-	}
+	fmt.Printf("Average: %v\n", avg)
+	fmt.Printf("Min:     %v\n", minTime)
+	fmt.Printf("Max:     %v\n", maxTime)
+	fmt.Printf("Total:   %v\n", total)
 
 	return nil
 }
@@ -230,12 +198,6 @@ func executeBenchmark(input string) error {
 	}
 
 	bytecode := comp.Bytecode()
-	
-	if UseOptimizedVM {
-		machine := vm.NewOptimized(bytecode)
-		return machine.Run()
-	}
-	
 	machine := vm.New(bytecode)
 	return machine.Run()
 }
@@ -325,30 +287,16 @@ func startREPL(in io.Reader, out io.Writer) {
 		code := comp.Bytecode()
 		constants = code.Constants
 
-		if UseOptimizedVM {
-			machine := vm.NewOptimizedWithGlobalsStore(code, globals)
-			err = machine.Run()
-			if err != nil {
-				fmt.Fprintf(out, "Runtime error: %s\n", err)
-				continue
-			}
-			lastPopped := machine.LastPoppedStackElem()
-			if lastPopped != nil && lastPopped != vm.Null {
-				io.WriteString(out, lastPopped.Inspect())
-				io.WriteString(out, "\n")
-			}
-		} else {
-			machine := vm.NewWithGlobalsStore(code, globals)
-			err = machine.Run()
-			if err != nil {
-				fmt.Fprintf(out, "Runtime error: %s\n", err)
-				continue
-			}
-			lastPopped := machine.LastPoppedStackElem()
-			if lastPopped != nil && lastPopped != vm.Null {
-				io.WriteString(out, lastPopped.Inspect())
-				io.WriteString(out, "\n")
-			}
+		machine := vm.NewWithGlobalsStore(code, globals)
+		err = machine.Run()
+		if err != nil {
+			fmt.Fprintf(out, "Runtime error: %s\n", err)
+			continue
+		}
+		lastPopped := machine.LastPoppedStackElem()
+		if lastPopped != nil && lastPopped != vm.Null {
+			io.WriteString(out, lastPopped.Inspect())
+			io.WriteString(out, "\n")
 		}
 	}
 }
