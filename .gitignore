@@ -25,3 +25,7 @@ vendor/
 # OS
 .DS_Store
 Thumbs.db
+
+# Orther
+.cursor/
+*.pdf
