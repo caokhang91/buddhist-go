@@ -105,6 +105,26 @@ func (rs *ReturnStatement) String() string {
 	return out.String()
 }
 
+// SendStatement represents a channel send statement: ch <- value;
+type SendStatement struct {
+	Token   token.Token // the '<-' token or channel token
+	Channel Expression  // channel identifier
+	Value   Expression  // value to send
+}
+
+func (ss *SendStatement) statementNode()       {}
+func (ss *SendStatement) TokenLiteral() string { return ss.Token.Literal }
+func (ss *SendStatement) String() string {
+	var out bytes.Buffer
+	out.WriteString(ss.Channel.String())
+	out.WriteString(" <- ")
+	if ss.Value != nil {
+		out.WriteString(ss.Value.String())
+	}
+	out.WriteString(";")
+	return out.String()
+}
+
 // ExpressionStatement represents an expression statement
 type ExpressionStatement struct {
 	Token      token.Token // the first token of the expression

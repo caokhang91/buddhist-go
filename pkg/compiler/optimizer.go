@@ -67,6 +67,12 @@ func (o *Optimizer) optimizeStatement(stmt ast.Statement) ast.Statement {
 			}
 		}
 		return s
+	case *ast.SendStatement:
+		return &ast.SendStatement{
+			Token:   s.Token,
+			Channel: o.optimizeExpression(s.Channel),
+			Value:   o.optimizeExpression(s.Value),
+		}
 	case *ast.BlockStatement:
 		return o.optimizeBlockStatement(s)
 	case *ast.WhileStatement:

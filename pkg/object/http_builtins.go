@@ -7,10 +7,63 @@ import (
 	"net/url"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/caokhang91/buddhist-go/pkg/tracing"
 )
+
+// ClosureCaller is a function type that can call a closure with arguments
+// This is set by the VM to avoid import cycles
+type ClosureCaller func(closure *Closure, args ...Object) (Object, error)
+
+var (
+	closureCallerMu sync.RWMutex
+	closureCaller   ClosureCaller
+)
+
+// SetClosureCaller sets the function to call closures (called by VM)
+func SetClosureCaller(caller ClosureCaller) {
+	closureCallerMu.Lock()
+	defer closureCallerMu.Unlock()
+	closureCaller = caller
+}
+
+// ClearClosureCaller clears the closure caller
+func ClearClosureCaller() {
+	closureCallerMu.Lock()
+	defer closureCallerMu.Unlock()
+	closureCaller = nil
+}
+
+// callProgressCallback calls a progress callback if provided
+func callProgressCallback(callback *Closure, data map[string]Object) {
+	if callback == nil {
+		return
+	}
+
+	closureCallerMu.RLock()
+	caller := closureCaller
+	closureCallerMu.RUnlock()
+
+	if caller == nil {
+		// No caller available, skip callback
+		return
+	}
+
+	// Create hash from data
+	hash := newStringHash(data)
+
+	// Call the closure using the registered caller
+	_, err := caller(callback, hash)
+	if err != nil {
+		// Silently ignore callback errors to not break the main operation
+		// Could log to tracing if needed
+		if tracing.IsEnabled() {
+			tracing.Trace("Progress callback error: %v", err)
+		}
+	}
+}
 
 func httpRequestBuiltin(args ...Object) Object {
 	return httpRequestBuiltinWithName("http_request", args...)
@@ -33,6 +86,16 @@ func httpRequestBuiltinWithName(fnName string, args ...Object) Object {
 	urlValue, errObj := requiredStringField(config, "url", fnName)
 	if errObj != nil {
 		return errObj
+	}
+
+	// Check for progress callback
+	var progressCallback *Closure
+	if progressObj, ok := getHashValue(config, "progress"); ok {
+		if closure, ok := progressObj.(*Closure); ok {
+			progressCallback = closure
+		} else {
+			return newError("`%s` progress must be FUNCTION, got %s", fnName, progressObj.Type())
+		}
 	}
 
 	method := "GET"
@@ -98,6 +161,13 @@ func httpRequestBuiltinWithName(fnName string, args ...Object) Object {
 		client.Timeout = time.Duration(timeoutValue) * time.Millisecond
 	}
 
+	// Call progress callback: "connecting"
+	callProgressCallback(progressCallback, map[string]Object{
+		"stage":  &String{Value: "connecting"},
+		"url":    &String{Value: urlValue},
+		"method": &String{Value: method},
+	})
+
 	// Network I/O tracing
 	tracing.TraceNetwork("Sending HTTP %s request to: %s", method, urlValue)
 	if headersObj, ok := getHashValue(config, "headers"); ok {
@@ -112,25 +182,62 @@ func httpRequestBuiltinWithName(fnName string, args ...Object) Object {
 		tracing.TraceNetwork("Request body present")
 	}
 
+	// Call progress callback: "sending"
+	callProgressCallback(progressCallback, map[string]Object{
+		"stage":  &String{Value: "sending"},
+		"url":    &String{Value: urlValue},
+		"method": &String{Value: method},
+	})
+
 	networkStart := time.Now()
 	resp, err := client.Do(req)
 	networkDuration := time.Since(networkStart)
 	
 	if err != nil {
+		// Call progress callback: "error"
+		callProgressCallback(progressCallback, map[string]Object{
+			"stage": &String{Value: "error"},
+			"error": &String{Value: err.Error()},
+		})
 		tracing.TraceNetwork("Request failed: %s", err.Error())
 		return newError("%s failed: %s", fnName, err.Error())
 	}
 	defer resp.Body.Close()
 
+	// Call progress callback: "received"
+	callProgressCallback(progressCallback, map[string]Object{
+		"stage":  &String{Value: "received"},
+		"status": &Integer{Value: int64(resp.StatusCode)},
+		"url":    &String{Value: urlValue},
+	})
+
 	tracing.TraceNetwork("Received response: status=%d, duration=%v", resp.StatusCode, networkDuration)
+
+	// Call progress callback: "reading"
+	callProgressCallback(progressCallback, map[string]Object{
+		"stage": &String{Value: "reading"},
+	})
 
 	readStart := time.Now()
 	body, err := io.ReadAll(resp.Body)
 	readDuration := time.Since(readStart)
 	if err != nil {
+		// Call progress callback: "error"
+		callProgressCallback(progressCallback, map[string]Object{
+			"stage": &String{Value: "error"},
+			"error": &String{Value: err.Error()},
+		})
 		tracing.TraceNetwork("Failed to read response body: %s", err.Error())
 		return newError("%s failed: %s", fnName, err.Error())
 	}
+
+	// Call progress callback: "complete"
+	callProgressCallback(progressCallback, map[string]Object{
+		"stage":    &String{Value: "complete"},
+		"status":   &Integer{Value: int64(resp.StatusCode)},
+		"bodySize": &Integer{Value: int64(len(body))},
+		"duration": &Integer{Value: int64((networkDuration + readDuration).Milliseconds())},
+	})
 
 	tracing.TraceNetwork("Read response body: %d bytes, duration=%v", len(body), readDuration)
 	tracing.TraceNetwork("Total network I/O time: %v", networkDuration+readDuration)

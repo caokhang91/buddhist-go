@@ -99,6 +99,12 @@ func (vm *VM) StackTop() object.Object {
 
 // Run executes the bytecode
 func (vm *VM) Run() error {
+	// Register closure caller for progress callbacks in builtin functions
+	object.SetClosureCaller(func(closure *object.Closure, args ...object.Object) (object.Object, error) {
+		return CallClosure(closure, vm.constants, vm.globals, args...)
+	})
+	defer object.ClearClosureCaller()
+
 	var ip int
 	var ins code.Instructions
 	var op code.Opcode
@@ -1248,6 +1254,46 @@ func (vm *VM) applyFunctionToElement(closure *object.Closure, element object.Obj
 	if closure.Fn.NumParameters >= 2 {
 		newVM.stack[1] = &object.Integer{Value: int64(index)}
 		newVM.sp = 2
+	}
+
+	// Run the function
+	err := newVM.Run()
+	if err != nil {
+		return nil, err
+	}
+
+	// Get the result
+	if newVM.sp > 0 {
+		return newVM.stack[newVM.sp-1], nil
+	}
+	return Null, nil
+}
+
+// CallClosure calls a closure with the given arguments, using the provided constants and globals
+// This is useful for calling closures from builtin functions
+func CallClosure(closure *object.Closure, constants []object.Object, globals []object.Object, args ...object.Object) (object.Object, error) {
+	if len(args) != closure.Fn.NumParameters {
+		return nil, fmt.Errorf("wrong number of arguments: want=%d, got=%d", closure.Fn.NumParameters, len(args))
+	}
+
+	// Create a new VM for this function call
+	newVM := &VM{
+		constants:   constants,
+		stack:       make([]object.Object, StackSize),
+		sp:          0,
+		globals:     globals,
+		frames:      make([]*Frame, MaxFrames),
+		framesIndex: 1,
+	}
+
+	// Set up the function call
+	frame := NewFrame(closure, 0)
+	newVM.frames[0] = frame
+
+	// Push arguments
+	for _, arg := range args {
+		newVM.stack[newVM.sp] = arg
+		newVM.sp++
 	}
 
 	// Run the function

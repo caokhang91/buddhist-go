@@ -57,6 +57,12 @@ func NewOptimizedWithGlobalsStore(bytecode *compiler.Bytecode, s []object.Object
 
 // Run executes the bytecode with optimizations
 func (vm *OptimizedVM) Run() error {
+	// Register closure caller for progress callbacks in builtin functions
+	object.SetClosureCaller(func(closure *object.Closure, args ...object.Object) (object.Object, error) {
+		return CallClosure(closure, vm.constants, vm.globals, args...)
+	})
+	defer object.ClearClosureCaller()
+
 	// Cache frequently accessed values
 	var ip int
 	var ins code.Instructions

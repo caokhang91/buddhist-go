@@ -25,4 +25,37 @@ let postConfig = {
 let postResponse = curl(postConfig);
 println("POST status: " + str(postResponse["status"]));
 
-println("=== Demo Complete ===");
+println("\n=== HTTP Request with Progress Callback ===");
+
+// GET request with progress callback
+let getConfigWithProgress = {
+    "method": "GET",
+    "url": "https://httpbin.org/get",
+    "params": {"test": "progress"},
+    "headers": {"User-Agent": "buddhist-go"},
+    "progress": fn(update) {
+        let stage = update["stage"];
+        println("Progress: " + stage);
+        if (stage == "connecting") {
+            println("  Connecting to: " + update["url"]);
+        } else if (stage == "sending") {
+            println("  Sending " + update["method"] + " request...");
+        } else if (stage == "received") {
+            println("  Received response: status " + str(update["status"]));
+        } else if (stage == "reading") {
+            println("  Reading response body...");
+        } else if (stage == "complete") {
+            let statusStr = "  Complete! Status: " + str(update["status"]);
+            let bodySizeStr = ", Body size: " + str(update["bodySize"]) + " bytes";
+            let durationStr = ", Duration: " + str(update["duration"]) + " ms";
+            println(statusStr + bodySizeStr + durationStr);
+        } else if (stage == "error") {
+            println("  Error: " + update["error"]);
+        }
+    }
+};
+
+let progressResponse = http_request(getConfigWithProgress);
+println("Final status: " + str(progressResponse["status"]));
+
+println("\n=== Demo Complete ===");
