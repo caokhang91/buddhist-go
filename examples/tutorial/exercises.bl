@@ -9,7 +9,7 @@ println("--- Bài 1: Tính thể tích hình cầu ---");
 const PI = 3.141593;
 
 let sqrt = fn(x) {
-    if (x == 0)then{
+    if (x == 0) then {
         return 0.0;
     }
     let guess = x / 2.0;

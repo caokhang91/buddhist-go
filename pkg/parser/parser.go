@@ -491,12 +491,31 @@ func (p *Parser) parseGroupedExpression() ast.Expression {
 func (p *Parser) parseIfExpression() ast.Expression {
 	expression := &ast.IfExpression{Token: p.curToken}
 
+	// Support "if not (condition) then { ... }" syntax
+	hasNot := p.peekTokenIs(token.NOT)
+	var notToken token.Token
+	if hasNot {
+		p.nextToken() // consume "not"
+		notToken = p.curToken // store the NOT token for later use
+	}
+
 	if !p.expectPeek(token.LPAREN) {
 		return nil
 	}
 
 	p.nextToken()
-	expression.Condition = p.parseExpression(LOWEST)
+	condition := p.parseExpression(LOWEST)
+
+	// If "not" keyword was used, wrap the condition in a prefix expression with BANG operator
+	if hasNot {
+		expression.Condition = &ast.PrefixExpression{
+			Token:    token.Token{Type: token.BANG, Literal: "!", Line: notToken.Line, Column: notToken.Column},
+			Operator: "!",
+			Right:    condition,
+		}
+	} else {
+		expression.Condition = condition
+	}
 
 	if !p.expectPeek(token.RPAREN) {
 		return nil
