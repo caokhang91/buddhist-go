@@ -491,15 +491,40 @@ func (p *Parser) parseGroupedExpression() ast.Expression {
 func (p *Parser) parseIfExpression() ast.Expression {
 	expression := &ast.IfExpression{Token: p.curToken}
 
+	// Support "if not (condition) then { ... }" syntax
+	hasNot := p.peekTokenIs(token.NOT)
+	var notToken token.Token
+	if hasNot {
+		p.nextToken() // consume "not"
+		notToken = p.curToken // store the NOT token for later use
+	}
+
 	if !p.expectPeek(token.LPAREN) {
 		return nil
 	}
 
 	p.nextToken()
-	expression.Condition = p.parseExpression(LOWEST)
+	condition := p.parseExpression(LOWEST)
+
+	// If "not" keyword was used, wrap the condition in a prefix expression with BANG operator
+	if hasNot {
+		expression.Condition = &ast.PrefixExpression{
+			Token:    token.Token{Type: token.BANG, Literal: "!", Line: notToken.Line, Column: notToken.Column},
+			Operator: "!",
+			Right:    condition,
+		}
+	} else {
+		expression.Condition = condition
+	}
 
 	if !p.expectPeek(token.RPAREN) {
 		return nil
+	}
+
+	// Support optional "then" keyword (e.g., "if (condition) then { ... }")
+	// If next token is THEN, consume it (optional)
+	if p.peekTokenIs(token.THEN) {
+		p.nextToken()
 	}
 
 	if !p.expectPeek(token.LBRACE) {
@@ -511,11 +536,33 @@ func (p *Parser) parseIfExpression() ast.Expression {
 	if p.peekTokenIs(token.ELSE) {
 		p.nextToken()
 
-		if !p.expectPeek(token.LBRACE) {
-			return nil
+		// Support "else if" - check if next token is IF
+		if p.peekTokenIs(token.IF) {
+			// Advance to IF token before parsing
+			p.nextToken()
+			// Parse "else if" as a nested if expression wrapped in a block statement
+			ifExpr := p.parseIfExpression()
+			if ifExpr == nil {
+				return nil
+			}
+			// Wrap the if expression in a block statement containing an expression statement
+			block := &ast.BlockStatement{
+				Token:      token.Token{Type: token.LBRACE, Literal: "{"},
+				Statements: []ast.Statement{
+					&ast.ExpressionStatement{
+						Token:      token.Token{Type: token.IF, Literal: "if"},
+						Expression: ifExpr,
+					},
+				},
+			}
+			expression.Alternative = block
+		} else {
+			// Regular "else" block
+			if !p.expectPeek(token.LBRACE) {
+				return nil
+			}
+			expression.Alternative = p.parseBlockStatement()
 		}
-
-		expression.Alternative = p.parseBlockStatement()
 	}
 
 	return expression
@@ -727,7 +774,19 @@ func (p *Parser) parseSpawnExpression() ast.Expression {
 }
 
 func (p *Parser) parseChannelExpression() ast.Expression {
-	return &ast.ChannelExpression{Token: p.curToken}
+	exp := &ast.ChannelExpression{Token: p.curToken}
+
+	// Check for buffered channel syntax: channel(bufferSize)
+	if p.peekTokenIs(token.LPAREN) {
+		p.nextToken() // consume '('
+		p.nextToken() // move to buffer size expression
+		exp.BufferSize = p.parseExpression(LOWEST)
+		if !p.expectPeek(token.RPAREN) {
+			return nil
+		}
+	}
+
+	return exp
 }
 
 func (p *Parser) parseSendExpression(left ast.Expression) ast.Expression {

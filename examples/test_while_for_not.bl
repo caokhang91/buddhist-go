@@ -1,0 +1,40 @@
+// Test while not and for not syntax
+println("=== Testing while not and for not ===");
+println("");
+
+// Test 1: while not
+println("Test 1: while not");
+let x = 5;
+while not (x == 0) {
+    println("  x = " + str(x));
+    x = x - 1;
+}
+println("  Loop finished");
+println("");
+
+// Test 2: for not
+println("Test 2: for not");
+let count = 0;
+for (let i = 0; not (i >= 5); i = i + 1) {
+    count = count + 1;
+    println("  i = " + str(i));
+}
+println("  Count = " + str(count));
+println("");
+
+// Test 3: Regular while and for still work (backward compatibility)
+println("Test 3: Regular while (backward compatibility)");
+let y = 3;
+while (y > 0) {
+    println("  y = " + str(y));
+    y = y - 1;
+}
+println("");
+
+println("Test 4: Regular for (backward compatibility)");
+for (let j = 0; j < 3; j = j + 1) {
+    println("  j = " + str(j));
+}
+println("");
+
+println("=== All tests completed ===");

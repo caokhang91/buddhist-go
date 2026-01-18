@@ -67,6 +67,12 @@ func (o *Optimizer) optimizeStatement(stmt ast.Statement) ast.Statement {
 			}
 		}
 		return s
+	case *ast.SendStatement:
+		return &ast.SendStatement{
+			Token:   s.Token,
+			Channel: o.optimizeExpression(s.Channel),
+			Value:   o.optimizeExpression(s.Value),
+		}
 	case *ast.BlockStatement:
 		return o.optimizeBlockStatement(s)
 	case *ast.WhileStatement:
@@ -175,6 +181,30 @@ func (o *Optimizer) optimizeExpression(expr ast.Expression) ast.Expression {
 			Token: e.Token,
 			Name:  e.Name,
 			Value: o.optimizeExpression(e.Value),
+		}
+	case *ast.ReceiveExpression:
+		return &ast.ReceiveExpression{
+			Token:   e.Token,
+			Channel: o.optimizeExpression(e.Channel),
+		}
+	case *ast.SendExpression:
+		return &ast.SendExpression{
+			Token:   e.Token,
+			Channel: o.optimizeExpression(e.Channel),
+			Value:   o.optimizeExpression(e.Value),
+		}
+	case *ast.ChannelExpression:
+		if e.BufferSize != nil {
+			return &ast.ChannelExpression{
+				Token:      e.Token,
+				BufferSize: o.optimizeExpression(e.BufferSize),
+			}
+		}
+		return e
+	case *ast.SpawnExpression:
+		return &ast.SpawnExpression{
+			Token:    e.Token,
+			Function: o.optimizeExpression(e.Function),
 		}
 	default:
 		return expr

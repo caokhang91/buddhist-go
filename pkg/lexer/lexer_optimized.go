@@ -1,6 +1,8 @@
 package lexer
 
 import (
+	"strings"
+
 	"github.com/caokhang91/buddhist-go/pkg/token"
 )
 
@@ -252,9 +254,10 @@ func (l *OptimizedLexer) readNumber() token.Token {
 	return token.Token{Type: token.INT, Literal: literal}
 }
 
-// readString reads a string literal - optimized
+// readString reads a string literal and processes escape sequences - optimized
 func (l *OptimizedLexer) readString() string {
-	position := l.position + 1
+	var result strings.Builder
+	
 	for {
 		l.readChar()
 		if l.ch == '"' || l.ch == 0 {
@@ -263,11 +266,32 @@ func (l *OptimizedLexer) readString() string {
 		// Handle escape sequences
 		if l.ch == '\\' {
 			l.readChar()
+			switch l.ch {
+			case 'n':
+				result.WriteByte('\n')
+			case 't':
+				result.WriteByte('\t')
+			case 'r':
+				result.WriteByte('\r')
+			case '\\':
+				result.WriteByte('\\')
+			case '"':
+				result.WriteByte('"')
+			case '\'':
+				result.WriteByte('\'')
+			case '0':
+				result.WriteByte('\000')
+			default:
+				// Unknown escape sequence, include both characters
+				result.WriteByte('\\')
+				result.WriteByte(l.ch)
+			}
+		} else {
+			result.WriteByte(l.ch)
 		}
 	}
-	result := string(l.input[position:l.position])
 	l.readChar() // consume closing quote
-	return result
+	return result.String()
 }
 
 // isLetterFast is an optimized inline letter check

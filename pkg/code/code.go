@@ -123,7 +123,7 @@ var definitions = map[Opcode]*Definition{
 	OpCurrentClosure:     {"OpCurrentClosure", []int{}},
 	OpSpawn:              {"OpSpawn", []int{}},
 	OpChannel:            {"OpChannel", []int{}},
-	OpChannelBuffered:    {"OpChannelBuffered", []int{2}}, // Buffer size (uint16)
+	OpChannelBuffered:    {"OpChannelBuffered", []int{}}, // Buffer size from stack
 	OpSend:               {"OpSend", []int{}},
 	OpReceive:            {"OpReceive", []int{}},
 	OpCloseChannel:       {"OpCloseChannel", []int{}},

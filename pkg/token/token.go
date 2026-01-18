@@ -65,6 +65,8 @@ const (
 	FALSE    TokenType = "FALSE"
 	IF       TokenType = "IF"
 	ELSE     TokenType = "ELSE"
+	THEN     TokenType = "THEN"
+	NOT      TokenType = "NOT"
 	RETURN   TokenType = "RETURN"
 	FOR      TokenType = "FOR"
 	WHILE    TokenType = "WHILE"
@@ -102,6 +104,8 @@ var keywords = map[string]TokenType{
 	"false":    FALSE,
 	"if":       IF,
 	"else":     ELSE,
+	"then":     THEN,
+	"not":      NOT,
 	"return":   RETURN,
 	"for":      FOR,
 	"while":    WHILE,

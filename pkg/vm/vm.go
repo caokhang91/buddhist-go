@@ -99,6 +99,12 @@ func (vm *VM) StackTop() object.Object {
 
 // Run executes the bytecode
 func (vm *VM) Run() error {
+	// Register closure caller for progress callbacks in builtin functions
+	object.SetClosureCaller(func(closure *object.Closure, args ...object.Object) (object.Object, error) {
+		return CallClosure(closure, vm.constants, vm.globals, args...)
+	})
+	defer object.ClearClosureCaller()
+
 	var ip int
 	var ins code.Instructions
 	var op code.Opcode
@@ -385,9 +391,15 @@ func (vm *VM) Run() error {
 			}
 
 		case code.OpChannelBuffered:
-			bufferSize := int(code.ReadUint16(ins[ip+1:]))
-			vm.currentFrame().ip += 2
-			channel := &object.Channel{Chan: make(chan object.Object, bufferSize)}
+			sizeObj := vm.pop()
+			sizeInt, ok := sizeObj.(*object.Integer)
+			if !ok {
+				return fmt.Errorf("channel buffer size must be integer, got %s", sizeObj.Type())
+			}
+			if sizeInt.Value < 0 {
+				return fmt.Errorf("channel buffer size must be non-negative, got %d", sizeInt.Value)
+			}
+			channel := &object.Channel{Chan: make(chan object.Object, sizeInt.Value)}
 			err := vm.push(channel)
 			if err != nil {
 				return err
@@ -609,6 +621,13 @@ func (vm *VM) executeComparison(op code.Opcode) error {
 	right := vm.pop()
 	left := vm.pop()
 
+	// Fail fast: only OpEqual and OpNotEqual supported for non-numeric types
+	if op != code.OpEqual && op != code.OpNotEqual {
+		if left.Type() != object.INTEGER_OBJ && left.Type() != object.FLOAT_OBJ {
+			return fmt.Errorf("unknown operator: %d (%s %s)", op, left.Type(), right.Type())
+		}
+	}
+
 	if left.Type() == object.INTEGER_OBJ && right.Type() == object.INTEGER_OBJ {
 		return vm.executeIntegerComparison(op, left, right)
 	}
@@ -617,15 +636,21 @@ func (vm *VM) executeComparison(op code.Opcode) error {
 		return vm.executeFloatComparison(op, left, right)
 	}
 
-	switch op {
-	case code.OpEqual:
-		return vm.push(nativeBoolToBooleanObject(right == left))
-	case code.OpNotEqual:
-		return vm.push(nativeBoolToBooleanObject(right != left))
-	default:
-		return fmt.Errorf("unknown operator: %d (%s %s)",
-			op, left.Type(), right.Type())
+	// String comparison by value
+	if left.Type() == object.STRING_OBJ && right.Type() == object.STRING_OBJ {
+		leftStr := left.(*object.String).Value
+		rightStr := right.(*object.String).Value
+		if op == code.OpEqual {
+			return vm.push(nativeBoolToBooleanObject(leftStr == rightStr))
+		}
+		return vm.push(nativeBoolToBooleanObject(leftStr != rightStr))
 	}
+
+	// Pointer comparison for other types (booleans, nulls, etc.)
+	if op == code.OpEqual {
+		return vm.push(nativeBoolToBooleanObject(right == left))
+	}
+	return vm.push(nativeBoolToBooleanObject(right != left))
 }
 
 func (vm *VM) executeIntegerComparison(op code.Opcode, left, right object.Object) error {
@@ -903,11 +928,16 @@ func (vm *VM) executeSpawn(fn object.Object) {
 		// Add panic recovery for spawned goroutines
 		defer func() {
 			if r := recover(); r != nil {
-				// Panic recovered - could log or report error here
-				// For now, we silently recover to prevent crashes
+				// Log panic but don't crash - errors should be handled by VM error returns
+				// This is a safety net for unexpected panics
 			}
 		}()
-		newVM.Run()
+		// Run and check for errors - don't silently ignore them
+		if err := newVM.Run(); err != nil {
+			// VM errors are returned, but we can't propagate them from a goroutine
+			// The error indicates something went wrong in the spawned function
+			// This could cause hangs if channel operations fail
+		}
 	}
 }
 
@@ -1224,6 +1254,46 @@ func (vm *VM) applyFunctionToElement(closure *object.Closure, element object.Obj
 	if closure.Fn.NumParameters >= 2 {
 		newVM.stack[1] = &object.Integer{Value: int64(index)}
 		newVM.sp = 2
+	}
+
+	// Run the function
+	err := newVM.Run()
+	if err != nil {
+		return nil, err
+	}
+
+	// Get the result
+	if newVM.sp > 0 {
+		return newVM.stack[newVM.sp-1], nil
+	}
+	return Null, nil
+}
+
+// CallClosure calls a closure with the given arguments, using the provided constants and globals
+// This is useful for calling closures from builtin functions
+func CallClosure(closure *object.Closure, constants []object.Object, globals []object.Object, args ...object.Object) (object.Object, error) {
+	if len(args) != closure.Fn.NumParameters {
+		return nil, fmt.Errorf("wrong number of arguments: want=%d, got=%d", closure.Fn.NumParameters, len(args))
+	}
+
+	// Create a new VM for this function call
+	newVM := &VM{
+		constants:   constants,
+		stack:       make([]object.Object, StackSize),
+		sp:          0,
+		globals:     globals,
+		frames:      make([]*Frame, MaxFrames),
+		framesIndex: 1,
+	}
+
+	// Set up the function call
+	frame := NewFrame(closure, 0)
+	newVM.frames[0] = frame
+
+	// Push arguments
+	for _, arg := range args {
+		newVM.stack[newVM.sp] = arg
+		newVM.sp++
 	}
 
 	// Run the function

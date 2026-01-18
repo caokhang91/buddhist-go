@@ -1,0 +1,54 @@
+// Channel Spawn Test - Buddhist Lang
+// Demonstrates correct syntax for channel operations with spawn
+
+println("=== Channel Spawn Test ===");
+
+// HTTP Request configuration
+let getConfig = {
+    "method": "GET",
+    "url": "https://httpbin.org/get",
+    "params": {"q": "buddhist-go", "page": 1},
+    "headers": {"User-Agent": "buddhist-go"}
+};
+
+// Create a buffered channel (buffer size 1) to avoid blocking in REPL mode
+let ch = channel(1);
+
+println("Spawning goroutine to perform HTTP request...");
+
+// CORRECT SYNTAX: Use ch <- value (arrow operator) to send to channel
+// WRONG SYNTAX: ch < value is parsed as a comparison, not a channel send!
+spawn fn() { 
+    let response = http_request(getConfig);
+    ch <- response;  // Correct: <- operator for channel send
+};
+
+println("Waiting for response from channel...");
+
+// Receive from channel  
+// Note: The terminal showed "let resp = < ch" but that was WRONG syntax
+// The correct syntax is shown here
+let resp = <- ch;
+
+println("Received response!");
+println("Response type: " + type(resp));
+// Check if resp is a hash/object before accessing keys
+if (type(resp) == "HASH") {
+    println("Status: " + str(resp["status"]));
+    println("Body type: " + type(resp["body"]));
+} else {
+    println("Error: Expected HASH but got " + type(resp));
+}
+
+// Test with simple values
+println("\n=== Simple Channel Test ===");
+let ch2 = channel(1);
+
+spawn fn() {
+    ch2 <- "Hello from goroutine!";
+};
+
+let msg = <- ch2;
+println("Message: " + msg);
+
+println("\n=== Test Complete ===");
