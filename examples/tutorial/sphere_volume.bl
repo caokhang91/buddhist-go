@@ -3,13 +3,13 @@
 
 const PI = 3.141593;
 
-let sqrt = fn(x) {
+place sqrt = fn(x) {
     // Phương pháp Newton đơn giản để tính căn bậc 2
     if (x == 0) {
         return 0.0;
     }
-    let guess = x / 2.0;
-    let i = 0;
+    place guess = x / 2.0;
+    place i = 0;
     while (i < 10) {
         guess = (guess + x / guess) / 2.0;
         i = i + 1;
@@ -17,9 +17,9 @@ let sqrt = fn(x) {
     return guess;
 };
 
-let pow = fn(x, n) {
-    let result = 1.0;
-    let i = 0;
+place pow = fn(x, n) {
+    place result = 1.0;
+    place i = 0;
     while (i < n) {
         result = result * x;
         i = i + 1;
@@ -28,13 +28,13 @@ let pow = fn(x, n) {
 };
 
 // Diện tích mặt cầu
-let S = 256.128;
+place S = 256.128;
 
 // Tính R từ S: R = √(S / 4π)
-let R = sqrt(S / (4 * PI));
+place R = sqrt(S / (4 * PI));
 
 // Tính V = (4π/3) * R³
-let V = (4.0 * PI / 3.0) * pow(R, 3);
+place V = (4.0 * PI / 3.0) * pow(R, 3);
 
 println("Nhap dien tich S: " + str(S));
 println("The tich V = " + str(V));

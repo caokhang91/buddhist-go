@@ -4,7 +4,7 @@
 println("=== Channel Spawn Deadlock Test ===");
 
 // HTTP Request configuration
-let getConfig = {
+place getConfig = {
     "method": "GET",
     "url": "https://httpbin.org/get",
     "params": {"q": "buddhist-go", "page": 1},
@@ -12,26 +12,26 @@ let getConfig = {
 };
 
 // Create a channel
-let ch = channel;
+place ch = channel;
 
 println("Testing WRONG syntax (will deadlock):");
 println("ch < http_request(getConfig) is parsed as a comparison, not a send!");
 
 // WRONG SYNTAX - This causes deadlock!
 // spawn fn() { ch < http_request(getConfig); };  // Parsed as comparison, not send
-// let resp = < ch;  // Waits forever because nothing was sent
+// place resp = < ch;  // Waits forever because nothing was sent
 
 println("\n=== Correct Syntax Example ===");
 println("Use ch <- value for sending, not ch < value");
 
 // CORRECT SYNTAX - This works:
-let ch2 = channel;
+place ch2 = channel;
 spawn fn() {
-    let response = http_request(getConfig);
+    place response = http_request(getConfig);
     ch2 <- response;  // Correct: <- operator for channel send
 };
 
-let resp = <- ch2;  // Correct: <- operator for channel receive
+place resp = <- ch2;  // Correct: <- operator for channel receive
 println("Received response!");
 println("Response type: " + type(resp));
 if (type(resp) == "HASH") {

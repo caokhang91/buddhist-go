@@ -18,9 +18,9 @@ func TestClassDefinition(t *testing.T) {
 		{
 			`
 			class Person {
-				let name = null;
+				place name = null;
 			}
-			let p = Person();
+			place p = Person();
 			p.name = "Alice";
 			p.name
 			`,
@@ -29,10 +29,10 @@ func TestClassDefinition(t *testing.T) {
 		{
 			`
 			class Point {
-				let x = 0;
-				let y = 0;
+				place x = 0;
+				place y = 0;
 			}
-			let p = Point();
+			place p = Point();
 			p.x = 10;
 			p.y = 20;
 			p.x
@@ -42,9 +42,9 @@ func TestClassDefinition(t *testing.T) {
 		{
 			`
 			class Point {
-				let x = 0;
+				place x = 0;
 			}
-			let p = Point();
+			place p = Point();
 			p.x = 20;
 			p.x
 			`,
@@ -76,8 +76,8 @@ func TestClassMethods(t *testing.T) {
 					return "Hello";
 				}
 			}
-			let p = Person();
-			let result = p.greet();
+			place p = Person();
+			place result = p.greet();
 			result
 			`,
 			"Hello",
@@ -103,13 +103,13 @@ func TestConstructor(t *testing.T) {
 		{
 			`
 			class Person {
-				let name = null;
+				place name = null;
 				
 				fn init(n) {
 					this.name = n;
 				}
 			}
-			let p = Person("Alice");
+			place p = Person("Alice");
 			p.name
 			`,
 			"Alice",
@@ -117,15 +117,15 @@ func TestConstructor(t *testing.T) {
 		{
 			`
 			class Point {
-				let x = 0;
-				let y = 0;
+				place x = 0;
+				place y = 0;
 				
 				fn init(x, y) {
 					this.x = x;
 					this.y = y;
 				}
 			}
-			let p = Point(10, 20);
+			place p = Point(10, 20);
 			p.x + p.y
 			`,
 			int64(30),
@@ -149,7 +149,7 @@ func TestInheritance(t *testing.T) {
 		{
 			`
 			class Animal {
-				let name = null;
+				place name = null;
 				
 				fn init(n) {
 					this.name = n;
@@ -166,7 +166,7 @@ func TestInheritance(t *testing.T) {
 				}
 			}
 			
-			let dog = Dog("Buddy");
+			place dog = Dog("Buddy");
 			dog.speak()
 			`,
 			"Buddy barks",
@@ -174,7 +174,7 @@ func TestInheritance(t *testing.T) {
 		{
 			`
 			class Animal {
-				let name = null;
+				place name = null;
 				
 				fn getName() {
 					return this.name;
@@ -187,7 +187,7 @@ func TestInheritance(t *testing.T) {
 				}
 			}
 			
-			let dog = Dog("Buddy");
+			place dog = Dog("Buddy");
 			dog.getName()
 			`,
 			"Buddy",
@@ -222,7 +222,7 @@ func TestMethodResolution(t *testing.T) {
 				}
 			}
 			
-			let b = B();
+			place b = B();
 			b.method()
 			`,
 			"B",
@@ -238,7 +238,7 @@ func TestMethodResolution(t *testing.T) {
 			class B extends A {
 			}
 			
-			let b = B();
+			place b = B();
 			b.method()
 			`,
 			"A",
@@ -262,14 +262,14 @@ func TestPropertyInheritance(t *testing.T) {
 		{
 			`
 			class Animal {
-				let name = null;
+				place name = null;
 			}
 			
 			class Dog extends Animal {
-				let breed = null;
+				place breed = null;
 			}
 			
-			let dog = Dog();
+			place dog = Dog();
 			dog.name = "Buddy";
 			dog.breed = "Golden Retriever";
 			dog.name + " is a " + dog.breed
@@ -293,15 +293,15 @@ func TestMultipleInstances(t *testing.T) {
 		{
 			`
 			class Person {
-				let name = null;
+				place name = null;
 				
 				fn init(n) {
 					this.name = n;
 				}
 			}
 			
-			let p1 = Person("Alice");
-			let p2 = Person("Bob");
+			place p1 = Person("Alice");
+			place p2 = Person("Bob");
 			p1.name + " and " + p2.name
 			`,
 			"Alice and Bob",

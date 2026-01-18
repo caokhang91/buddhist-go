@@ -52,7 +52,7 @@ Download pre-built binaries from the [Releases](https://github.com/caokhang91/bu
 
 >>> println("Hello, World!")
 Hello, World!
->>> let x = 10
+>>> place x = 10
 >>> x * 2
 20
 ```
@@ -68,7 +68,7 @@ Hello, World!
 ### Variables
 
 ```javascript
-let x = 5;
+place x = 5;
 const PI = 3.14159;
 x = x + 1;
 ```
@@ -81,11 +81,11 @@ fn add(a, b) {
 }
 
 // Anonymous functions
-let multiply = fn(a, b) { a * b };
+place multiply = fn(a, b) { a * b };
 
 // Closures
 fn counter() {
-    let count = 0;
+    place count = 0;
     return fn() {
         count = count + 1;
         return count;
@@ -110,7 +110,7 @@ while (x < 10) {
 }
 
 // For loop
-for (let i = 0; i < 10; i = i + 1) {
+for (place i = 0; i < 10; i = i + 1) {
     println(i);
 }
 ```
@@ -119,12 +119,12 @@ for (let i = 0; i < 10; i = i + 1) {
 
 ```javascript
 // Standard arrays
-let arr = [1, 2, 3, 4, 5];
+place arr = [1, 2, 3, 4, 5];
 println(arr[0]);  // 1
 println(len(arr)); // 5
 
 // PHP-style arrays with keys
-let map = [
+place map = [
     "name" => "Buddhist",
     "version" => "1.0.0",
     0 => "indexed"
@@ -135,7 +135,7 @@ println(map["name"]);  // Buddhist
 ### Hash Maps
 
 ```javascript
-let person = {
+place person = {
     "name": "John",
     "age": 30
 };
@@ -146,7 +146,7 @@ println(person["name"]);  // John
 
 ```javascript
 // Create a channel
-let ch = channel;
+place ch = channel;
 
 // Spawn a goroutine
 spawn fn() {
@@ -154,7 +154,7 @@ spawn fn() {
 };
 
 // Receive from channel
-let msg = <-ch;
+place msg = <-ch;
 println(msg);
 ```
 

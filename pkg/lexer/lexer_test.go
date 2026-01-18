@@ -7,14 +7,14 @@ import (
 )
 
 func TestNextToken(t *testing.T) {
-	input := `let five = 5;
-let ten = 10;
+	input := `place five = 5;
+place ten = 10;
 
-let add = fn(x, y) {
+place add = fn(x, y) {
   x + y;
 };
 
-let result = add(five, ten);
+place result = add(five, ten);
 !-*5;
 5 < 10 > 5;
 
@@ -36,17 +36,17 @@ if (5 < 10) {
 		expectedType    token.TokenType
 		expectedLiteral string
 	}{
-		{token.LET, "let"},
+		{token.PLACE, "place"},
 		{token.IDENT, "five"},
 		{token.ASSIGN, "="},
 		{token.INT, "5"},
 		{token.SEMICOLON, ";"},
-		{token.LET, "let"},
+		{token.PLACE, "place"},
 		{token.IDENT, "ten"},
 		{token.ASSIGN, "="},
 		{token.INT, "10"},
 		{token.SEMICOLON, ";"},
-		{token.LET, "let"},
+		{token.PLACE, "place"},
 		{token.IDENT, "add"},
 		{token.ASSIGN, "="},
 		{token.FUNCTION, "fn"},
@@ -62,7 +62,7 @@ if (5 < 10) {
 		{token.SEMICOLON, ";"},
 		{token.RBRACE, "}"},
 		{token.SEMICOLON, ";"},
-		{token.LET, "let"},
+		{token.PLACE, "place"},
 		{token.IDENT, "result"},
 		{token.ASSIGN, "="},
 		{token.IDENT, "add"},
@@ -146,7 +146,7 @@ func TestKeywords(t *testing.T) {
 		input    string
 		expected token.TokenType
 	}{
-		{"let", token.LET},
+		{"place", token.PLACE},
 		{"const", token.CONST},
 		{"fn", token.FUNCTION},
 		{"if", token.IF},

@@ -2,8 +2,8 @@
 // This script tests various operations
 
 // Test 1: Integer arithmetic (benefits from integer caching)
-let sum = 0;
-let i = 0;
+place sum = 0;
+place i = 0;
 while (i < 1000) {
     sum = sum + i;
     i = i + 1;
@@ -11,12 +11,12 @@ while (i < 1000) {
 println("Sum 1-999: " + str(sum));
 
 // Test 2: Constant folding test
-let result = 10 + 20 * 3 - 5;  // Should be folded at compile time
+place result = 10 + 20 * 3 - 5;  // Should be folded at compile time
 println("Constant folding result: " + str(result));
 
 // Test 3: Array operations
-let arr = [];
-let j = 0;
+place arr = [];
+place j = 0;
 while (j < 100) {
     arr[] = j * 2;
     j = j + 1;
@@ -24,16 +24,16 @@ while (j < 100) {
 println("Array length: " + str(len(arr)));
 
 // Test 4: String operations
-let greeting = "Hello, ";
-let name = "Buddhist";
-let message = greeting + name + "!";
+place greeting = "Hello, ";
+place name = "Buddhist";
+place message = greeting + name + "!";
 println(message);
 
 // Test 5: Nested loops
-let count = 0;
-let x = 0;
+place count = 0;
+place x = 0;
 while (x < 50) {
-    let y = 0;
+    place y = 0;
     while (y < 50) {
         count = count + 1;
         y = y + 1;
@@ -43,25 +43,25 @@ while (x < 50) {
 println("Nested loop iterations: " + str(count));
 
 // Test 6: Function calls (recursive)
-let factorial = fn(n) {
+place factorial = fn(n) {
     if (n <= 1) {
         return 1;
     }
     return n * factorial(n - 1);
 };
 
-let fact10 = factorial(10);
+place fact10 = factorial(10);
 println("Factorial of 10: " + str(fact10));
 
 // Test 7: Hash map operations
-let hash = {"a": 1, "b": 2, "c": 3};
-let total = hash["a"] + hash["b"] + hash["c"];
+place hash = {"a": 1, "b": 2, "c": 3};
+place total = hash["a"] + hash["b"] + hash["c"];
 println("Hash total: " + str(total));
 
 // Test 8: Boolean operations (benefits from constant folding)
-let a = true && true;
-let b = false || true;
-let c = !false;
+place a = true && true;
+place b = false || true;
+place c = !false;
 println("Boolean tests: " + str(a) + ", " + str(b) + ", " + str(c));
 
 println("Benchmark complete!");

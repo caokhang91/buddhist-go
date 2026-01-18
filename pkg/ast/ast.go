@@ -45,9 +45,9 @@ func (p *Program) String() string {
 	return out.String()
 }
 
-// LetStatement represents a let statement: let x = 5;
+// LetStatement represents a place statement: place x = 5;
 type LetStatement struct {
-	Token token.Token // the token.LET token
+	Token token.Token // the token.PLACE token
 	Name  *Identifier
 	Value Expression
 }
@@ -82,6 +82,27 @@ func (cs *ConstStatement) String() string {
 	out.WriteString(" = ")
 	if cs.Value != nil {
 		out.WriteString(cs.Value.String())
+	}
+	out.WriteString(";")
+	return out.String()
+}
+
+// SetStatement represents a set statement: set x = 5;
+type SetStatement struct {
+	Token token.Token // the token.SET token
+	Name  *Identifier
+	Value Expression
+}
+
+func (ss *SetStatement) statementNode()       {}
+func (ss *SetStatement) TokenLiteral() string { return ss.Token.Literal }
+func (ss *SetStatement) String() string {
+	var out bytes.Buffer
+	out.WriteString(ss.TokenLiteral() + " ")
+	out.WriteString(ss.Name.String())
+	out.WriteString(" = ")
+	if ss.Value != nil {
+		out.WriteString(ss.Value.String())
 	}
 	out.WriteString(";")
 	return out.String()
@@ -311,6 +332,7 @@ type WhileStatement struct {
 	Token     token.Token
 	Condition Expression
 	Body      *BlockStatement
+	Until     Expression // Optional until clause
 }
 
 func (ws *WhileStatement) statementNode()       {}
@@ -321,6 +343,11 @@ func (ws *WhileStatement) String() string {
 	out.WriteString(ws.Condition.String())
 	out.WriteString(") ")
 	out.WriteString(ws.Body.String())
+	if ws.Until != nil {
+		out.WriteString(" until (")
+		out.WriteString(ws.Until.String())
+		out.WriteString(")")
+	}
 	return out.String()
 }
 
