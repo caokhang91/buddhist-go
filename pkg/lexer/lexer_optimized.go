@@ -146,6 +146,8 @@ func (l *OptimizedLexer) NextToken() token.Token {
 		tok = token.Token{Type: token.SEMICOLON, Literal: ";", Line: line, Column: column}
 	case ':':
 		tok = token.Token{Type: token.COLON, Literal: ":", Line: line, Column: column}
+	case '.':
+		tok = token.Token{Type: token.DOT, Literal: ".", Line: line, Column: column}
 	case ',':
 		tok = token.Token{Type: token.COMMA, Literal: ",", Line: line, Column: column}
 	case '(':

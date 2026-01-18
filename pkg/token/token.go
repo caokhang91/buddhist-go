@@ -48,7 +48,8 @@ const (
 	COMMA     TokenType = ","
 	SEMICOLON TokenType = ";"
 	COLON     TokenType = ":"
-	ARROW     TokenType = "=>" // PHP-style array key-value separator
+	DOT       TokenType = "."   // Property/method access
+	ARROW     TokenType = "=>"  // PHP-style array key-value separator
 
 	LPAREN   TokenType = "("
 	RPAREN   TokenType = ")"
@@ -81,7 +82,10 @@ const (
 	RECEIVE TokenType = "->"      // Nhận từ channel
 
 	// Class keywords
-	CLASS TokenType = "CLASS" // Class declaration
+	CLASS   TokenType = "CLASS"   // Class declaration
+	THIS    TokenType = "THIS"    // 'this' keyword
+	EXTENDS TokenType = "EXTENDS" // 'extends' keyword for inheritance
+	SUPER   TokenType = "SUPER"   // 'super' keyword for parent class access
 
 	// Module keywords
 	IMPORT TokenType = "IMPORT" // Import statement
@@ -115,6 +119,9 @@ var keywords = map[string]TokenType{
 	"spawn":    SPAWN,
 	"channel":  CHANNEL,
 	"class":    CLASS,
+	"this":     THIS,
+	"extends":  EXTENDS,
+	"super":    SUPER,
 	"import":   IMPORT,
 	"export":   EXPORT,
 	"from":     FROM,

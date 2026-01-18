@@ -1,0 +1,44 @@
+// Class Example - Buddhist Lang
+
+println("=== Class Example ===");
+
+// Define a simple class
+class Person {
+    let name = null;
+    let age = 0;
+    
+    fn greet() {
+        return "Hello, I'm " + this.name + " and I'm " + str(this.age) + " years old";
+    }
+    
+    fn haveBirthday() {
+        this.age = this.age + 1;
+        return this.age;
+    }
+}
+
+// Create an instance (no constructor arguments for now)
+let person1 = Person();
+println("Created person1 instance");
+person1.name = "Alice";
+println("Set name");
+person1.age = 30;
+println("Set age");
+
+// Access properties
+println("Name: " + person1.name);
+println("Age: " + str(person1.age));
+
+// Call methods
+println(person1.greet());
+println("After birthday, age: " + str(person1.haveBirthday()));
+println(person1.greet());
+
+// Create another instance
+let person2 = Person();
+person2.name = "Bob";
+person2.age = 25;
+println("\nCreated person2");
+println(person2.greet());
+
+println("\n=== Demo Complete ===");

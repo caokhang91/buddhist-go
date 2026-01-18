@@ -565,9 +565,10 @@ func (iae *IndexAssignmentExpression) String() string {
 
 // ClassStatement represents a class declaration
 type ClassStatement struct {
-	Token token.Token // the 'class' token
-	Name  *Identifier
-	Body  *BlockStatement // Contains method definitions
+	Token  token.Token // the 'class' token
+	Name   *Identifier
+	Parent *Identifier // Parent class for inheritance (extends)
+	Body   *BlockStatement // Contains method definitions
 }
 
 func (cs *ClassStatement) statementNode()       {}
@@ -589,6 +590,15 @@ type ThisExpression struct {
 func (te *ThisExpression) expressionNode()      {}
 func (te *ThisExpression) TokenLiteral() string { return te.Token.Literal }
 func (te *ThisExpression) String() string       { return "this" }
+
+// SuperExpression represents 'super' keyword
+type SuperExpression struct {
+	Token token.Token // the 'super' token
+}
+
+func (se *SuperExpression) expressionNode()      {}
+func (se *SuperExpression) TokenLiteral() string { return se.Token.Literal }
+func (se *SuperExpression) String() string       { return "super" }
 
 // ImportStatement represents an import statement: import { name } from "module"
 type ImportStatement struct {

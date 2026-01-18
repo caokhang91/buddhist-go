@@ -18,7 +18,7 @@ import (
 const VERSION = "1.0.0"
 
 // UseOptimizedVM controls whether to use the optimized VM
-var UseOptimizedVM = true
+var UseOptimizedVM = false // Temporarily disabled for class support
 
 const BANNER = `
 ╔══════════════════════════════════════════════════════════════╗

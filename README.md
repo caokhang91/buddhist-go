@@ -249,6 +249,40 @@ An IntelliJ/WebStorm plugin is available in the `intellij-plugin/` directory for
 
 Contributions are welcome! Please feel free to submit a Pull Request.
 
+## Roadmap
+
+### Short-term (1-2 weeks)
+- ✅ Progress callbacks for HTTP requests
+- ✅ Escape sequence support in strings (`\n`, `\t`, etc.)
+- 🔲 Math functions: `sqrt()`, `pow()`, `abs()`, `floor()`, `ceil()`, `round()`
+- 🔲 String functions: `split()`, `join()`, `trim()`, `substring()`, `indexOf()`, `replace()`
+- 🔲 File I/O: `readFile()`, `writeFile()`, `readDir()`
+
+### Medium-term (1 month)
+- 🔲 Module/Import system: `import "utils.bl"`
+- 🔲 Better error handling with stack traces
+- 🔲 Array functions: `map()`, `filter()`, `reduce()`, `sort()`, `reverse()`, `find()`
+- 🔲 Date/Time functions: `now()`, `formatDate()`, `parseDate()`
+- 🔲 Code formatter: `buddhist fmt`
+- 🔲 Linter: `buddhist lint`
+
+### Long-term (2-3 months)
+- 🔲 Testing framework with built-in test runner
+- 🔲 Package manager for dependency management
+- 🔲 OOP support (classes and objects)
+- 🔲 Type system (optional type hints)
+- 🔲 Standard library with collections, networking, crypto
+- 🔲 Profiler and performance analysis tools
+- 🔲 Documentation generator
+
+### IDE/Editor Enhancements
+- 🔲 Code completion (IntelliSense)
+- 🔲 Go to definition
+- 🔲 Find usages
+- 🔲 Refactoring support
+- 🔲 Real-time error highlighting
+- 🔲 Better REPL with history and auto-completion
+
 ## License
 
 MIT License - See [LICENSE](LICENSE) for details.

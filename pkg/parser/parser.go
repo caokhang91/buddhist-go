@@ -42,6 +42,7 @@ var precedences = map[token.TokenType]int{
 	token.OR:       OR,
 	token.LPAREN:   CALL,
 	token.LBRACKET: INDEX,
+	token.DOT:      CALL, // Property/method access has same precedence as function calls
 	token.SEND:     ASSIGN, // Channel send should have same precedence as assignment
 }
 
@@ -89,6 +90,8 @@ func New(l lexer.TokenLexer) *Parser {
 	p.registerPrefix(token.CHANNEL, p.parseChannelExpression)
 	p.registerPrefix(token.SEND, p.parseReceiveExpression)
 	p.registerPrefix(token.LT, p.parseReceiveExpression) // Support < as prefix for channel receive
+	p.registerPrefix(token.THIS, p.parseThisExpression)
+	p.registerPrefix(token.SUPER, p.parseSuperExpression)
 
 	p.infixParseFns = make(map[token.TokenType]infixParseFn)
 	p.registerInfix(token.PLUS, p.parseInfixExpression)
@@ -106,6 +109,7 @@ func New(l lexer.TokenLexer) *Parser {
 	p.registerInfix(token.OR, p.parseInfixExpression)
 	p.registerInfix(token.LPAREN, p.parseCallExpression)
 	p.registerInfix(token.LBRACKET, p.parseIndexExpression)
+	p.registerInfix(token.DOT, p.parseDotExpression) // Property/method access
 	p.registerInfix(token.ASSIGN, p.parseAssignmentExpression)
 	p.registerInfix(token.SEND, p.parseSendExpression)
 
@@ -210,6 +214,8 @@ func (p *Parser) parseStatement() ast.Statement {
 		return p.parseBreakStatement()
 	case token.CONTINUE:
 		return p.parseContinueStatement()
+	case token.CLASS:
+		return p.parseClassStatement()
 	default:
 		return p.parseExpressionStatement()
 	}
@@ -841,4 +847,62 @@ func (p *Parser) parseAssignmentExpression(left ast.Expression) ast.Expression {
 	msg := fmt.Sprintf("line %d: cannot assign to %s", p.curToken.Line, left.String())
 	p.errors = append(p.errors, msg)
 	return nil
+}
+
+// parseClassStatement parses a class declaration
+func (p *Parser) parseClassStatement() *ast.ClassStatement {
+	stmt := &ast.ClassStatement{Token: p.curToken}
+
+	if !p.expectPeek(token.IDENT) {
+		return nil
+	}
+
+	stmt.Name = &ast.Identifier{Token: p.curToken, Value: p.curToken.Literal}
+
+	// Check for 'extends' keyword
+	if p.peekTokenIs(token.EXTENDS) {
+		p.nextToken() // consume 'extends'
+		if !p.expectPeek(token.IDENT) {
+			return nil
+		}
+		stmt.Parent = &ast.Identifier{Token: p.curToken, Value: p.curToken.Literal}
+	}
+
+	if !p.expectPeek(token.LBRACE) {
+		return nil
+	}
+
+	stmt.Body = p.parseBlockStatement()
+
+	return stmt
+}
+
+// parseThisExpression parses the 'this' keyword
+func (p *Parser) parseThisExpression() ast.Expression {
+	return &ast.ThisExpression{Token: p.curToken}
+}
+
+// parseSuperExpression parses the 'super' keyword
+func (p *Parser) parseSuperExpression() ast.Expression {
+	return &ast.SuperExpression{Token: p.curToken}
+}
+
+// parseDotExpression parses property/method access: obj.property or obj.method()
+func (p *Parser) parseDotExpression(left ast.Expression) ast.Expression {
+	exp := &ast.IndexExpression{
+		Token: p.curToken,
+		Left:  left,
+	}
+
+	p.nextToken()
+
+	if !p.curTokenIs(token.IDENT) {
+		p.errors = append(p.errors, fmt.Sprintf("line %d: expected property name after '.'", p.curToken.Line))
+		return nil
+	}
+
+	// Use the identifier as the index (property name)
+	exp.Index = &ast.Identifier{Token: p.curToken, Value: p.curToken.Literal}
+
+	return exp
 }
