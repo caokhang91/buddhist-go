@@ -7,6 +7,7 @@ import (
 	"github.com/caokhang91/buddhist-go/pkg/ast"
 	"github.com/caokhang91/buddhist-go/pkg/code"
 	"github.com/caokhang91/buddhist-go/pkg/object"
+	"github.com/caokhang91/buddhist-go/pkg/token"
 )
 
 // Bytecode represents compiled bytecode
@@ -475,41 +476,26 @@ func (c *Compiler) Compile(node ast.Node) error {
 		if node.Index == nil {
 			return fmt.Errorf("index expression requires index")
 		}
-		
-		// Check if this is property access (obj.property)
-		// Only use OpGetProperty if Left is 'this' or 'super' (guaranteed to be instance)
-		if ident, ok := node.Index.(*ast.Identifier); ok {
-			// Check if Left is 'this' or 'super' - these are guaranteed to be instances
-			if _, ok := node.Left.(*ast.ThisExpression); ok {
-				// Property access on 'this' - use OpGetProperty
-				err := c.Compile(node.Left)
-				if err != nil {
-					return err
-				}
-				// Push property name as string
-				propName := &object.String{Value: ident.Value}
-				propNameIndex := c.addConstant(propName)
-				c.emit(code.OpConstant, propNameIndex)
-				c.emit(code.OpGetProperty)
-				return nil
+		// Dot access: obj.property
+		// The parser represents this as IndexExpression with Token '.' and Index as Identifier.
+		// For dot access, the identifier is a property name (string), not a variable reference.
+		if node.Token.Type == token.DOT {
+			ident, ok := node.Index.(*ast.Identifier)
+			if !ok {
+				return fmt.Errorf("property access requires identifier after '.'")
 			}
-			if _, ok := node.Left.(*ast.SuperExpression); ok {
-				// Property access on 'super' - use OpGetProperty
-				err := c.Compile(node.Left)
-				if err != nil {
-					return err
-				}
-				// Push property name as string
-				propName := &object.String{Value: ident.Value}
-				propNameIndex := c.addConstant(propName)
-				c.emit(code.OpConstant, propNameIndex)
-				c.emit(code.OpGetProperty)
-				return nil
+			err := c.Compile(node.Left)
+			if err != nil {
+				return err
 			}
-			// For other cases, use OpIndex (will handle both arrays and instances at runtime)
+			propName := &object.String{Value: ident.Value}
+			propNameIndex := c.addConstant(propName)
+			c.emit(code.OpConstant, propNameIndex)
+			c.emit(code.OpGetProperty)
+			return nil
 		}
-		
-		// Regular index access (arr[index] or hash[key] or obj.property)
+
+		// Regular index access: arr[index] / hash[key] / instance["prop"]
 		err := c.Compile(node.Left)
 		if err != nil {
 			return err
@@ -532,9 +518,13 @@ func (c *Compiler) Compile(node ast.Node) error {
 			}
 			c.emit(code.OpArrayPush)
 		} else {
-			// Check if this is property assignment (obj.property = value)
-			if ident, ok := node.Index.(*ast.Identifier); ok {
-				// Property assignment - use OpSetProperty
+			// Property assignment: obj.property = value (dot syntax)
+			// Only treat Identifier index as property name when it came from '.' access.
+			if node.IndexToken.Type == token.DOT {
+				ident, ok := node.Index.(*ast.Identifier)
+				if !ok {
+					return fmt.Errorf("property assignment requires identifier after '.'")
+				}
 				propName := &object.String{Value: ident.Value}
 				propNameIndex := c.addConstant(propName)
 				c.emit(code.OpConstant, propNameIndex)
@@ -543,11 +533,10 @@ func (c *Compiler) Compile(node ast.Node) error {
 					return err
 				}
 				c.emit(code.OpSetProperty)
-				// Push the assigned value back (it's already on stack from OpSetProperty)
 				return nil
 			}
-			
-			// Regular index assignment (arr[index] = value)
+
+			// Regular index assignment: arr[index] = value
 			err = c.Compile(node.Index)
 			if err != nil {
 				return err
