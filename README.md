@@ -160,19 +160,85 @@ println(msg);
 
 ## Built-in Functions
 
+### I/O Functions
+
 | Function | Description |
 |----------|-------------|
 | `println(...)` | Print values with newline |
 | `print(...)` | Print values without newline |
+
+### Type Functions
+
+| Function | Description |
+|----------|-------------|
 | `len(x)` | Get length of array/string |
-| `first(arr)` | Get first element of array |
-| `last(arr)` | Get last element of array |
-| `rest(arr)` | Get array without first element |
-| `push(arr, val)` | Append value to array |
 | `type(x)` | Get type of value |
 | `str(x)` | Convert to string |
 | `int(x)` | Convert to integer |
 | `float(x)` | Convert to float |
+
+### Array Functions
+
+| Function | Description |
+|----------|-------------|
+| `first(arr)` | Get first element of array |
+| `last(arr)` | Get last element of array |
+| `rest(arr)` | Get array without first element |
+| `push(arr, val)` | Append value to array |
+| `slice(arr, start, end)` | Get a slice of array |
+| `range(end)` or `range(start, end, step)` | Generate array of numbers |
+| `map(arr, fn)` | Apply function to each element |
+| `filter(arr, fn)` | Filter elements by predicate |
+| `reduce(arr, fn, initial)` | Reduce array to single value |
+| `reverse(arr)` | Reverse array |
+| `concat(arr1, arr2, ...)` | Concatenate arrays |
+| `contains(arr, val)` | Check if array contains value |
+| `indexOf(arr, val)` | Get index of value in array |
+| `unique(arr)` | Remove duplicate elements |
+| `flatten(arr)` | Flatten nested arrays |
+| `sum(arr)` | Sum of numeric array |
+| `min(arr)` | Minimum value in array |
+| `max(arr)` | Maximum value in array |
+| `avg(arr)` | Average of numeric array |
+
+### Math Functions
+
+| Function | Description |
+|----------|-------------|
+| `sqrt(x)` | Square root |
+| `pow(base, exp)` | Power function |
+| `abs(x)` | Absolute value |
+| `floor(x)` | Round down to integer |
+| `ceil(x)` | Round up to integer |
+| `round(x)` | Round to nearest integer |
+| `sin(x)` | Sine (radians) |
+| `cos(x)` | Cosine (radians) |
+| `tan(x)` | Tangent (radians) |
+| `log(x)` | Natural logarithm |
+| `log10(x)` | Base-10 logarithm |
+| `exp(x)` | Exponential (e^x) |
+| `random()` | Random float 0-1 |
+| `random(n)` | Random integer 0 to n-1 |
+| `random(min, max)` | Random integer min to max |
+
+### String Functions
+
+| Function | Description |
+|----------|-------------|
+| `split(str, sep)` | Split string by separator |
+| `join(arr, sep)` | Join array elements with separator |
+| `trim(str)` | Remove leading/trailing whitespace |
+| `trim(str, chars)` | Remove specific characters |
+| `trimLeft(str)` | Remove leading whitespace |
+| `trimRight(str)` | Remove trailing whitespace |
+| `upper(str)` | Convert to uppercase |
+| `lower(str)` | Convert to lowercase |
+| `substring(str, start, end)` | Extract substring |
+| `replace(str, old, new)` | Replace all occurrences |
+| `replace(str, old, new, n)` | Replace first n occurrences |
+| `startsWith(str, prefix)` | Check if string starts with prefix |
+| `endsWith(str, suffix)` | Check if string ends with suffix |
+| `repeat(str, n)` | Repeat string n times |
 
 ## Project Structure
 
@@ -254,14 +320,15 @@ Contributions are welcome! Please feel free to submit a Pull Request.
 ### Short-term (1-2 weeks)
 - ✅ Progress callbacks for HTTP requests
 - ✅ Escape sequence support in strings (`\n`, `\t`, etc.)
-- 🔲 Math functions: `sqrt()`, `pow()`, `abs()`, `floor()`, `ceil()`, `round()`
-- 🔲 String functions: `split()`, `join()`, `trim()`, `substring()`, `indexOf()`, `replace()`
+- ✅ Math functions: `sqrt()`, `pow()`, `abs()`, `floor()`, `ceil()`, `round()`, `sin()`, `cos()`, `tan()`, `log()`, `exp()`, `random()`
+- ✅ String functions: `split()`, `join()`, `trim()`, `substring()`, `replace()`, `upper()`, `lower()`, `startsWith()`, `endsWith()`, `repeat()`
+- ✅ Array functions: `map()`, `filter()`, `reduce()`, `reverse()`, `contains()`, `indexOf()`, `unique()`, `flatten()`, `sum()`, `min()`, `max()`, `avg()`
 - 🔲 File I/O: `readFile()`, `writeFile()`, `readDir()`
 
 ### Medium-term (1 month)
 - 🔲 Module/Import system: `import "utils.bl"`
 - 🔲 Better error handling with stack traces
-- 🔲 Array functions: `map()`, `filter()`, `reduce()`, `sort()`, `reverse()`, `find()`
+- 🔲 Array functions: `sort()`, `find()`
 - 🔲 Date/Time functions: `now()`, `formatDate()`, `parseDate()`
 - 🔲 Code formatter: `buddhist fmt`
 - 🔲 Linter: `buddhist lint`
