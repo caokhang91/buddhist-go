@@ -26,10 +26,10 @@ git clone https://github.com/caokhang91/buddhist-go.git
 cd buddhist-go
 
 # Build the interpreter
-go build -o buddhist ./cmd/buddhist
+go build -o buddhist-go .
 
 # Or install directly
-go install ./cmd/buddhist
+go install .
 ```
 
 ### From Release
@@ -41,7 +41,7 @@ Download pre-built binaries from the [Releases](https://github.com/caokhang91/bu
 ### Interactive REPL
 
 ```bash
-./buddhist
+./buddhist-go
 ```
 
 ```
@@ -60,7 +60,7 @@ Hello, World!
 ### Run a Script
 
 ```bash
-./buddhist examples/hello.bl
+./buddhist-go examples/hello.bl
 ```
 
 ## Language Syntax
@@ -284,7 +284,7 @@ The interpreter includes several performance optimizations:
 ### Benchmarking
 
 ```bash
-./buddhist --benchmark examples/benchmark.bl
+./buddhist-go --benchmark examples/benchmark.bl
 ```
 
 ## Development
@@ -304,7 +304,8 @@ go test ./...
 ### Running Examples
 
 ```bash
-go run ./cmd/buddhist examples/hello.bl
+go run . examples/hello.bl
+go run . examples/fizzbuzz.bl
 ```
 
 ## IDE Support
