@@ -22,7 +22,7 @@ go run ./cmd/buddhist
 
 Tạo file `hello.bl`:
 
-```javascript
+```buddhist
 println("Hello, World!");
 ```
 
@@ -58,7 +58,7 @@ Hello, World!
 20
 ```
 
-**📋 Lệnh REPL:**
+**📋 Ra Lệnh REPL:**
 - `help` - 📖 Hiển thị các lệnh có sẵn
 - `clear` - 🧹 Xóa màn hình
 - `exit` - 👋 Thoát REPL

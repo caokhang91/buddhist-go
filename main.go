@@ -1,8 +1,10 @@
 package main
 
 import (
+	"bytes"
 	"bufio"
 	"fmt"
+	"html"
 	"io"
 	"os"
 	"strings"
@@ -103,7 +105,52 @@ func executeFile(filename string) error {
 		return fmt.Errorf("could not read file %s: %w", filename, err)
 	}
 
-	return execute(string(content))
+	// Capture stdout and stderr
+	oldStdout := os.Stdout
+	oldStderr := os.Stderr
+	
+	stdoutR, stdoutW, _ := os.Pipe()
+	stderrR, stderrW, _ := os.Pipe()
+	
+	os.Stdout = stdoutW
+	os.Stderr = stderrW
+	
+	var stdoutBuf, stderrBuf bytes.Buffer
+	stdoutDone := make(chan struct{})
+	stderrDone := make(chan struct{})
+	
+	// Capture stdout in a goroutine
+	go func() {
+		io.Copy(&stdoutBuf, stdoutR)
+		close(stdoutDone)
+	}()
+	
+	// Capture stderr in a goroutine
+	go func() {
+		io.Copy(&stderrBuf, stderrR)
+		close(stderrDone)
+	}()
+	
+	// Execute the script
+	execErr := execute(string(content))
+	
+	// Close the write pipes to signal end of output
+	stdoutW.Close()
+	stderrW.Close()
+	
+	// Restore original stdout/stderr
+	os.Stdout = oldStdout
+	os.Stderr = oldStderr
+	
+	// Wait for capture to complete
+	<-stdoutDone
+	<-stderrDone
+	
+	// Format and output as HTML
+	htmlOutput := formatAsHTML(stdoutBuf.Bytes(), stderrBuf.Bytes(), execErr)
+	fmt.Print(htmlOutput)
+	
+	return execErr
 }
 
 func execute(input string) error {
@@ -419,4 +466,73 @@ func printREPLHelp(out io.Writer) {
 	fmt.Fprintln(out, "  [1, 2, 3][0]")
 	fmt.Fprintln(out, "  {\"name\": \"Buddhist\"}[\"name\"]")
 	fmt.Fprintln(out, "  println(\"Hello, World!\")")
+}
+
+// formatAsHTML wraps the captured output in a styled HTML document
+func formatAsHTML(stdout []byte, stderr []byte, execErr error) string {
+	var buf strings.Builder
+	
+	buf.WriteString("<!DOCTYPE html>\n")
+	buf.WriteString("<html lang=\"en\">\n")
+	buf.WriteString("<head>\n")
+	buf.WriteString("  <meta charset=\"UTF-8\">\n")
+	buf.WriteString("  <meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\">\n")
+	buf.WriteString("  <title>Buddhist Script Output</title>\n")
+	buf.WriteString("  <style>\n")
+	buf.WriteString("    * { margin: 0; padding: 0; box-sizing: border-box; }\n")
+	buf.WriteString("    body { font-family: 'Consolas', 'Monaco', 'Courier New', monospace; background: #1e1e1e; color: #d4d4d4; line-height: 1.6; padding: 20px; }\n")
+	buf.WriteString("    .container { max-width: 1200px; margin: 0 auto; background: #252526; border-radius: 8px; padding: 20px; box-shadow: 0 4px 6px rgba(0, 0, 0, 0.3); }\n")
+	buf.WriteString("    h1 { color: #4ec9b0; margin-bottom: 20px; font-size: 24px; border-bottom: 2px solid #3c3c3c; padding-bottom: 10px; }\n")
+	buf.WriteString("    .output-section { margin-bottom: 20px; }\n")
+	buf.WriteString("    .output-section h2 { color: #569cd6; font-size: 18px; margin-bottom: 10px; }\n")
+	buf.WriteString("    pre { background: #1e1e1e; padding: 15px; border-radius: 4px; overflow-x: auto; border: 1px solid #3c3c3c; white-space: pre-wrap; word-wrap: break-word; }\n")
+	buf.WriteString("    .stdout { color: #d4d4d4; }\n")
+	buf.WriteString("    .stderr { color: #f48771; background: #2d1b1b; border-color: #5a1f1f; }\n")
+	buf.WriteString("    .error { color: #f48771; background: #2d1b1b; padding: 15px; border-radius: 4px; border: 1px solid #5a1f1f; margin-top: 10px; }\n")
+	buf.WriteString("    .empty { color: #808080; font-style: italic; }\n")
+	buf.WriteString("    .meta { color: #808080; font-size: 12px; margin-bottom: 20px; }\n")
+	buf.WriteString("  </style>\n")
+	buf.WriteString("</head>\n")
+	buf.WriteString("<body>\n")
+	buf.WriteString("  <div class=\"container\">\n")
+	buf.WriteString("    <h1>Buddhist Script Output</h1>\n")
+	buf.WriteString("    <div class=\"meta\">Generated at " + time.Now().Format("2006-01-02 15:04:05") + "</div>\n")
+	
+	// Standard output
+	buf.WriteString("    <div class=\"output-section\">\n")
+	buf.WriteString("      <h2>Standard Output</h2>\n")
+	if len(stdout) > 0 {
+		buf.WriteString("      <pre class=\"stdout\">")
+		buf.WriteString(html.EscapeString(string(stdout)))
+		buf.WriteString("</pre>\n")
+	} else {
+		buf.WriteString("      <pre class=\"stdout empty\">(no output)</pre>\n")
+	}
+	buf.WriteString("    </div>\n")
+	
+	// Standard error (if any)
+	if len(stderr) > 0 {
+		buf.WriteString("    <div class=\"output-section\">\n")
+		buf.WriteString("      <h2>Standard Error</h2>\n")
+		buf.WriteString("      <pre class=\"stderr\">")
+		buf.WriteString(html.EscapeString(string(stderr)))
+		buf.WriteString("</pre>\n")
+		buf.WriteString("    </div>\n")
+	}
+	
+	// Execution error (if any)
+	if execErr != nil {
+		buf.WriteString("    <div class=\"output-section\">\n")
+		buf.WriteString("      <h2>Execution Error</h2>\n")
+		buf.WriteString("      <div class=\"error\">")
+		buf.WriteString(html.EscapeString(execErr.Error()))
+		buf.WriteString("</div>\n")
+		buf.WriteString("    </div>\n")
+	}
+	
+	buf.WriteString("  </div>\n")
+	buf.WriteString("</body>\n")
+	buf.WriteString("</html>\n")
+	
+	return buf.String()
 }

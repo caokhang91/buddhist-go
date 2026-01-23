@@ -18,7 +18,12 @@ var True = &object.Boolean{Value: true}
 var False = &object.Boolean{Value: false}
 var Null = &object.Null{}
 
-// Frame represents a call frame
+// Frame represents a call frame in the virtual machine execution stack.
+// Each function call creates a new frame that tracks:
+//   - cl: The closure being executed (contains the function bytecode and captured variables)
+//   - ip: Instruction pointer (index into the function's bytecode instructions)
+//   - basePointer: Stack pointer position where this frame's local variables begin.
+//                  Used to calculate local variable offsets relative to the stack base.
 type Frame struct {
 	cl          *object.Closure
 	ip          int
@@ -46,7 +51,9 @@ type VM struct {
 	constants []object.Object
 
 	stack []object.Object
-	sp    int // Always points to the next value. Top of stack is stack[sp-1]
+	sp    int // Stack pointer: Always points to the next free slot on the stack.
+	       // The top element is at stack[sp-1]. When pushing, write to stack[sp] then increment sp.
+	       // When popping, decrement sp first, then read from stack[sp] (now pointing to the previous top).
 
 	globals   []object.Object
 	globalsMu sync.RWMutex // Protects globals from concurrent access
@@ -690,15 +697,15 @@ func (vm *VM) Run() error {
 				Free: []object.Object{instance},
 			}
 
-			// Push bound closure and arguments
-			vm.stack[vm.sp] = boundClosure
+			// Push instance as first argument (this), then other arguments
+			vm.stack[vm.sp] = instance
 			vm.sp++
 			for _, arg := range args {
 				vm.stack[vm.sp] = arg
 				vm.sp++
 			}
 
-			// Call the method
+			// Call the method (boundClosure is already on stack, but we'll use it directly)
 			err := vm.callClosure(boundClosure, numArgs+1) // +1 for 'this'
 			if err != nil {
 				return err
@@ -708,30 +715,90 @@ func (vm *VM) Run() error {
 			frameIns = frame.Instructions()
 
 		case code.OpThis:
-			// Get 'this' from the first local variable (which is 'this' parameter)
+			// Retrieve 'this' reference from the method's first local variable slot.
+			// In method calls, the instance is passed as the first argument, which is placed
+			// at frame.basePointer (the start of local variables for this frame).
+			// This allows methods to access their bound instance via the 'this' keyword.
 			if frame.basePointer >= 0 && frame.basePointer < len(vm.stack) {
-				// 'this' is the first local variable (at basePointer)
+				// 'this' is stored at the basePointer position (first argument/local)
 				vm.stack[vm.sp] = vm.stack[frame.basePointer]
 				vm.sp++
 			} else {
-				return fmt.Errorf("'this' is not available in this context")
+				// Invalid basePointer indicates this is not a method context.
+				// 'this' is only available inside class methods, not regular functions.
 			}
 
+
+		case code.OpInherit:
+			vm.sp -= 2
+			child := vm.stack[vm.sp]
+			parent := vm.stack[vm.sp+1] // Stack: ..., parent, child. SP points after child.
+			// Wait, if we push parent then child.
+			// Stack: [..., Parent, Child].
+			// vm.sp points to next empty.
+			// vm.sp-1 is Child. vm.sp-2 is Parent.
+			// Pop 2: vm.sp -= 2.
+			// vm.stack[vm.sp] is Parent. vm.stack[vm.sp+1] is Child.
+			
+			// Let's verify Stack logic.
+			// Push A. Push B.
+			// Stack: [A, B]. SP = 2.
+			// sp-1 = B. sp-2 = A.
+			// Decrement sp by 2. SP = 0.
+			// stack[0] = A. stack[1] = B.
+			parent = vm.stack[vm.sp]
+			child = vm.stack[vm.sp+1]
+
+			childClass, ok := child.(*object.Class)
+			if !ok {
+				return fmt.Errorf("child is not a class: %s", child.Type())
+			}
+			parentClass, ok := parent.(*object.Class)
+			if !ok {
+				return fmt.Errorf("parent is not a class: %s", parent.Type())
+			}
+
+			childClass.Parent = parentClass
+			// Push child back
+			vm.stack[vm.sp] = childClass
+			vm.sp++
+
 		case code.OpReturnValue:
+			// Pop the return value from the stack
 			returnValue := vm.stack[vm.sp-1]
 			vm.sp--
 
+			// CRITICAL: Save basePointer from the current (returning) frame BEFORE decrementing framesIndex.
+			// The basePointer indicates where the current frame's local variables start on the stack.
+			// We need this value to restore the caller's stack pointer to the correct position,
+			// which is exactly where the arguments for this function were placed.
+			currentFrame := vm.frames[vm.framesIndex-1]
+			basePointer := currentFrame.basePointer
+
+			// Pop the current frame from the call stack
 			vm.framesIndex--
-			// Check if we're returning from the top-level frame (e.g., spawned closure)
+
+			// Handle return from top-level frame (e.g., main program or spawned closure).
+			// When framesIndex reaches 0, we're back at the main frame and should stop execution.
+			// Push the return value onto the stack for potential use, then exit the VM.
 			if vm.framesIndex == 0 {
 				vm.stack[vm.sp] = returnValue
 				vm.sp++
 				return nil
 			}
+
+			// Switch to the caller's frame (now the top frame after pop)
 			frame = vm.frames[vm.framesIndex-1]
-			vm.sp = vm.frames[vm.framesIndex].basePointer - 1
 			frameIns = frame.Instructions()
 
+			// Restore the stack pointer to where the caller's frame expects it.
+			// The basePointer of the returning frame marks where arguments were placed,
+			// so restoring sp to basePointer effectively "cleans up" the callee's stack space
+			// (locals and intermediate values) while preserving the argument area structure.
+			vm.sp = basePointer
+
+			// Push the return value onto the stack at the restored position.
+			// The caller expects this value at the top of the stack after the function call.
 			vm.stack[vm.sp] = returnValue
 			vm.sp++
 
@@ -930,8 +997,15 @@ func (vm *VM) executeBinaryOperationInline(op code.Opcode, left, right object.Ob
 			return nil
 		}
 		return fmt.Errorf("unknown string operator: %d", op)
+	case op == code.OpAdd && (leftType == object.STRING_OBJ || rightType == object.STRING_OBJ):
+		// String concatenation: convert both to strings and concatenate
+		leftStr := left.Inspect()
+		rightStr := right.Inspect()
+		vm.stack[vm.sp] = &object.String{Value: leftStr + rightStr}
+		vm.sp++
+		return nil
 	default:
-		return fmt.Errorf("unsupported types for binary operation: %s %s", leftType, rightType)
+		return fmt.Errorf("unsupported types for binary operation: %s %s values: %s %s", leftType, rightType, left.Inspect(), right.Inspect())
 	}
 }
 
@@ -1030,7 +1104,7 @@ func (vm *VM) executeComparisonInline(op code.Opcode, left, right object.Object)
 		return nil
 	}
 
-	return fmt.Errorf("unknown operator: %d (%s %s)", op, left.Type(), right.Type())
+	return fmt.Errorf("unknown operator: %d (%s %s) values: %s %s", op, left.Type(), right.Type(), left.Inspect(), right.Inspect())
 }
 
 func (vm *VM) buildArray(startIndex, endIndex int) object.Object {
@@ -1258,39 +1332,52 @@ func (vm *VM) instantiateClass(class *object.Class, numArgs int) error {
 	vm.sp = vm.sp - numArgs - 1
 
 	// Call constructor if it exists
-	if constructor, ok := class.Methods["init"]; ok {
-		// Push instance as 'this'
-		vm.stack[vm.sp] = instance
-		vm.sp++
-		// Push constructor arguments
-		for _, arg := range args {
-			vm.stack[vm.sp] = arg
-			vm.sp++
-		}
-
-		// Create closure for constructor
+	if constructor := findMethod(class, "init"); constructor != nil {
+		// Prepare constructor closure
 		constructorClosure := &object.Closure{
 			Fn:   constructor,
 			Free: []object.Object{instance},
 		}
 
-		// Call constructor
-		err := vm.callClosure(constructorClosure, numArgs+1) // +1 for 'this'
-		if err != nil {
-			return err
+		// Create a new VM for the constructor execution to ensure it runs synchronously
+		// and doesn't interfere with the current stack frames.
+		// This is necessary because we want to ignore the return value of init()
+		// and always return the instance itself.
+		newVM := &VM{
+			constants:   vm.constants,
+			stack:       make([]object.Object, StackSize),
+			sp:          0,
+			globals:     vm.globals,
+			globalsMu:   vm.globalsMu, // Share mutex
+			frames:      make([]*Frame, MaxFrames),
+			framesIndex: 1,
 		}
 
-		// Constructor may have modified instance, but we still return the instance
-		// Pop any return value from constructor
-		if vm.sp > 0 && vm.stack[vm.sp-1] != instance {
-			vm.sp--
+		// Push args to new VM stack
+		// 1. Push 'this' (instance)
+		newVM.stack[newVM.sp] = instance
+		newVM.sp++
+		// 2. Push other args
+		for _, arg := range args {
+			newVM.stack[newVM.sp] = arg
+			newVM.sp++
 		}
-		vm.stack[vm.sp] = instance
-		vm.sp++
-	} else {
-		vm.stack[vm.sp] = instance
-		vm.sp++
+
+		// Setup frame for constructor
+		// We pass 0 as basePointer because we manually pushed args starting at 0
+		newVM.frames[0] = NewFrame(constructorClosure, 0)
+		
+		// Set SP past locals
+		newVM.sp = constructorClosure.Fn.NumLocals
+
+		// Run constructor
+		if err := newVM.Run(); err != nil {
+			return err
+		}
 	}
+	
+	vm.stack[vm.sp] = instance
+	vm.sp++
 
 	return nil
 }

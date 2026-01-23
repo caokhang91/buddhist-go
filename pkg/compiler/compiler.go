@@ -369,10 +369,26 @@ func (c *Compiler) Compile(node ast.Node) error {
 
 		// Add class to constants and emit OpClass
 		classIndex := c.addConstant(class)
-		c.emit(code.OpClass, classIndex)
-
 		// Store class in global scope
 		symbol := c.symbolTable.Define(node.Name.Value)
+		
+		if node.Parent != nil {
+			// Resolve parent (push it onto stack)
+			pSymbol, ok := c.symbolTable.Resolve(node.Parent.Value)
+			if !ok {
+				return fmt.Errorf("undefined parent class %s", node.Parent.Value)
+			}
+			c.loadSymbol(pSymbol)
+			
+			// Push class template
+			c.emit(code.OpClass, classIndex)
+			
+			// Link them
+			c.emit(code.OpInherit)
+		} else {
+			c.emit(code.OpClass, classIndex)
+		}
+
 		if symbol.Scope == GlobalScope {
 			c.emit(code.OpSetGlobal, symbol.Index)
 		} else {
@@ -477,39 +493,24 @@ func (c *Compiler) Compile(node ast.Node) error {
 		}
 		
 		// Check if this is property access (obj.property)
-		// Only use OpGetProperty if Left is 'this' or 'super' (guaranteed to be instance)
+		// If Index is an Identifier (from DOT syntax), treat it as property access
 		if ident, ok := node.Index.(*ast.Identifier); ok {
-			// Check if Left is 'this' or 'super' - these are guaranteed to be instances
-			if _, ok := node.Left.(*ast.ThisExpression); ok {
-				// Property access on 'this' - use OpGetProperty
-				err := c.Compile(node.Left)
-				if err != nil {
-					return err
-				}
-				// Push property name as string
-				propName := &object.String{Value: ident.Value}
-				propNameIndex := c.addConstant(propName)
-				c.emit(code.OpConstant, propNameIndex)
-				c.emit(code.OpGetProperty)
-				return nil
+			// Property access (obj.property) - use OpGetProperty
+			// This handles: this.property, super.property, obj.property
+			err := c.Compile(node.Left)
+			if err != nil {
+				return err
 			}
-			if _, ok := node.Left.(*ast.SuperExpression); ok {
-				// Property access on 'super' - use OpGetProperty
-				err := c.Compile(node.Left)
-				if err != nil {
-					return err
-				}
-				// Push property name as string
-				propName := &object.String{Value: ident.Value}
-				propNameIndex := c.addConstant(propName)
-				c.emit(code.OpConstant, propNameIndex)
-				c.emit(code.OpGetProperty)
-				return nil
-			}
-			// For other cases, use OpIndex (will handle both arrays and instances at runtime)
+			// Push property name as string constant
+			propName := &object.String{Value: ident.Value}
+			propNameIndex := c.addConstant(propName)
+			c.emit(code.OpConstant, propNameIndex)
+			c.emit(code.OpGetProperty)
+			return nil
 		}
 		
-		// Regular index access (arr[index] or hash[key] or obj.property)
+		// Regular index access (arr[index] or hash[key] with computed index)
+		// Index is an expression (not identifier), so compile it as expression
 		err := c.Compile(node.Left)
 		if err != nil {
 			return err
@@ -627,10 +628,11 @@ func (c *Compiler) Compile(node ast.Node) error {
 				if err != nil {
 					return err
 				}
-				// Push method name as string
+				// Add method name as constant and emit OpGetMethod with index
 				methodName := &object.String{Value: ident.Value}
 				methodNameIndex := c.addConstant(methodName)
-				c.emit(code.OpConstant, methodNameIndex)
+				// OpGetMethod reads methodNameIndex from instruction, not from stack
+				c.emit(code.OpGetMethod, methodNameIndex)
 
 				for _, a := range node.Arguments {
 					err := c.Compile(a)

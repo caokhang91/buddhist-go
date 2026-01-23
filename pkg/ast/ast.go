@@ -594,7 +594,7 @@ func (iae *IndexAssignmentExpression) String() string {
 type ClassStatement struct {
 	Token  token.Token // the 'class' token
 	Name   *Identifier
-	Parent *Identifier // Parent class for inheritance (extends)
+	Parent *Identifier // Parent class identifier for inheritance (extends keyword)
 	Body   *BlockStatement // Contains method definitions
 }
 
@@ -604,6 +604,10 @@ func (cs *ClassStatement) String() string {
 	var out bytes.Buffer
 	out.WriteString("class ")
 	out.WriteString(cs.Name.String())
+	if cs.Parent != nil {
+		out.WriteString(" extends ")
+		out.WriteString(cs.Parent.String())
+	}
 	out.WriteString(" ")
 	out.WriteString(cs.Body.String())
 	return out.String()

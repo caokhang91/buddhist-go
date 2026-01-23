@@ -456,7 +456,22 @@ func (p *Parser) parseExpression(precedence int) ast.Expression {
 	}
 	leftExp := prefix()
 
-	for !p.peekTokenIs(token.SEMICOLON) && precedence < p.peekPrecedence() {
+	for !p.peekTokenIs(token.SEMICOLON) {
+		peekPrec := p.peekPrecedence()
+		
+		// Special handling for ASSIGN: always allow it to parse (right-associative)
+		// This allows property assignments like p.name = value to work correctly,
+		// even when the left side has higher precedence (like DOT/CALL)
+		if p.peekTokenIs(token.ASSIGN) {
+			// Force ASSIGN to be parsed by making peekPrec higher than current precedence
+			// This handles cases like p.name = value where p.name has CALL precedence
+			peekPrec = precedence + 1
+		}
+		
+		if precedence >= peekPrec {
+			break
+		}
+
 		infix := p.infixParseFns[p.peekToken.Type]
 		if infix == nil {
 			return leftExp

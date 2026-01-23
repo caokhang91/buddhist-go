@@ -67,6 +67,7 @@ const (
 	OpSetProperty // Set instance property
 	OpThis        // Push 'this' (current instance)
 	OpSuper       // Push 'super' (parent class instance)
+	OpInherit     // Inherit from parent class
 	// Error handling opcodes
 	OpTry     // Try block
 	OpThrow   // Throw statement
@@ -140,6 +141,7 @@ var definitions = map[Opcode]*Definition{
 	OpSetProperty: {"OpSetProperty", []int{}},
 	OpThis:        {"OpThis", []int{}},
 	OpSuper:       {"OpSuper", []int{}},
+	OpInherit:     {"OpInherit", []int{}},
 	// Error handling opcodes
 	OpTry:     {"OpTry", []int{2, 2}},
 	OpThrow:   {"OpThrow", []int{}},
