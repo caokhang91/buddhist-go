@@ -909,9 +909,10 @@ func (p *Parser) parseAssignmentExpression(left ast.Expression) ast.Expression {
 	indexExp, ok := left.(*ast.IndexExpression)
 	if ok {
 		exp := &ast.IndexAssignmentExpression{
-			Token: p.curToken,
-			Left:  indexExp.Left,
-			Index: indexExp.Index,
+			Token:      p.curToken,
+			IndexToken: indexExp.Token,
+			Left:       indexExp.Left,
+			Index:      indexExp.Index,
 		}
 
 		p.nextToken()

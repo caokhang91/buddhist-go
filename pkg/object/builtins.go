@@ -3,9 +3,16 @@ package object
 import (
 	"bytes"
 	"fmt"
+	"math"
+	"math/rand"
 	"strings"
 	"sync"
+	"time"
 )
+
+func init() {
+	rand.Seed(time.Now().UnixNano())
+}
 
 // ParallelThreshold defines when to use parallel processing
 const ParallelThreshold = 1000
@@ -711,6 +718,491 @@ var Builtins = []BuiltinDef{
 			}
 
 			return &Float{Value: sum / float64(len(arr.Elements))}
+		},
+	},
+	// Math functions
+	{
+		Name: "sqrt",
+		Fn: func(args ...Object) Object {
+			if len(args) != 1 {
+				return newError("wrong number of arguments. got=%d, want=1", len(args))
+			}
+			var val float64
+			switch arg := args[0].(type) {
+			case *Integer:
+				val = float64(arg.Value)
+			case *Float:
+				val = arg.Value
+			default:
+				return newError("argument to `sqrt` must be a number, got %s", args[0].Type())
+			}
+			if val < 0 {
+				return newError("cannot take square root of negative number")
+			}
+			return &Float{Value: math.Sqrt(val)}
+		},
+	},
+	{
+		Name: "pow",
+		Fn: func(args ...Object) Object {
+			if len(args) != 2 {
+				return newError("wrong number of arguments. got=%d, want=2", len(args))
+			}
+			var base, exp float64
+			switch arg := args[0].(type) {
+			case *Integer:
+				base = float64(arg.Value)
+			case *Float:
+				base = arg.Value
+			default:
+				return newError("first argument to `pow` must be a number, got %s", args[0].Type())
+			}
+			switch arg := args[1].(type) {
+			case *Integer:
+				exp = float64(arg.Value)
+			case *Float:
+				exp = arg.Value
+			default:
+				return newError("second argument to `pow` must be a number, got %s", args[1].Type())
+			}
+			result := math.Pow(base, exp)
+			// Return integer if both inputs are integers and result is whole
+			if _, ok := args[0].(*Integer); ok {
+				if _, ok := args[1].(*Integer); ok {
+					if result == float64(int64(result)) {
+						return &Integer{Value: int64(result)}
+					}
+				}
+			}
+			return &Float{Value: result}
+		},
+	},
+	{
+		Name: "abs",
+		Fn: func(args ...Object) Object {
+			if len(args) != 1 {
+				return newError("wrong number of arguments. got=%d, want=1", len(args))
+			}
+			switch arg := args[0].(type) {
+			case *Integer:
+				if arg.Value < 0 {
+					return &Integer{Value: -arg.Value}
+				}
+				return arg
+			case *Float:
+				return &Float{Value: math.Abs(arg.Value)}
+			default:
+				return newError("argument to `abs` must be a number, got %s", args[0].Type())
+			}
+		},
+	},
+	{
+		Name: "floor",
+		Fn: func(args ...Object) Object {
+			if len(args) != 1 {
+				return newError("wrong number of arguments. got=%d, want=1", len(args))
+			}
+			switch arg := args[0].(type) {
+			case *Integer:
+				return arg
+			case *Float:
+				return &Integer{Value: int64(math.Floor(arg.Value))}
+			default:
+				return newError("argument to `floor` must be a number, got %s", args[0].Type())
+			}
+		},
+	},
+	{
+		Name: "ceil",
+		Fn: func(args ...Object) Object {
+			if len(args) != 1 {
+				return newError("wrong number of arguments. got=%d, want=1", len(args))
+			}
+			switch arg := args[0].(type) {
+			case *Integer:
+				return arg
+			case *Float:
+				return &Integer{Value: int64(math.Ceil(arg.Value))}
+			default:
+				return newError("argument to `ceil` must be a number, got %s", args[0].Type())
+			}
+		},
+	},
+	{
+		Name: "round",
+		Fn: func(args ...Object) Object {
+			if len(args) != 1 {
+				return newError("wrong number of arguments. got=%d, want=1", len(args))
+			}
+			switch arg := args[0].(type) {
+			case *Integer:
+				return arg
+			case *Float:
+				return &Integer{Value: int64(math.Round(arg.Value))}
+			default:
+				return newError("argument to `round` must be a number, got %s", args[0].Type())
+			}
+		},
+	},
+	{
+		Name: "sin",
+		Fn: func(args ...Object) Object {
+			if len(args) != 1 {
+				return newError("wrong number of arguments. got=%d, want=1", len(args))
+			}
+			var val float64
+			switch arg := args[0].(type) {
+			case *Integer:
+				val = float64(arg.Value)
+			case *Float:
+				val = arg.Value
+			default:
+				return newError("argument to `sin` must be a number, got %s", args[0].Type())
+			}
+			return &Float{Value: math.Sin(val)}
+		},
+	},
+	{
+		Name: "cos",
+		Fn: func(args ...Object) Object {
+			if len(args) != 1 {
+				return newError("wrong number of arguments. got=%d, want=1", len(args))
+			}
+			var val float64
+			switch arg := args[0].(type) {
+			case *Integer:
+				val = float64(arg.Value)
+			case *Float:
+				val = arg.Value
+			default:
+				return newError("argument to `cos` must be a number, got %s", args[0].Type())
+			}
+			return &Float{Value: math.Cos(val)}
+		},
+	},
+	{
+		Name: "tan",
+		Fn: func(args ...Object) Object {
+			if len(args) != 1 {
+				return newError("wrong number of arguments. got=%d, want=1", len(args))
+			}
+			var val float64
+			switch arg := args[0].(type) {
+			case *Integer:
+				val = float64(arg.Value)
+			case *Float:
+				val = arg.Value
+			default:
+				return newError("argument to `tan` must be a number, got %s", args[0].Type())
+			}
+			return &Float{Value: math.Tan(val)}
+		},
+	},
+	{
+		Name: "log",
+		Fn: func(args ...Object) Object {
+			if len(args) != 1 {
+				return newError("wrong number of arguments. got=%d, want=1", len(args))
+			}
+			var val float64
+			switch arg := args[0].(type) {
+			case *Integer:
+				val = float64(arg.Value)
+			case *Float:
+				val = arg.Value
+			default:
+				return newError("argument to `log` must be a number, got %s", args[0].Type())
+			}
+			if val <= 0 {
+				return newError("cannot take logarithm of non-positive number")
+			}
+			return &Float{Value: math.Log(val)}
+		},
+	},
+	{
+		Name: "log10",
+		Fn: func(args ...Object) Object {
+			if len(args) != 1 {
+				return newError("wrong number of arguments. got=%d, want=1", len(args))
+			}
+			var val float64
+			switch arg := args[0].(type) {
+			case *Integer:
+				val = float64(arg.Value)
+			case *Float:
+				val = arg.Value
+			default:
+				return newError("argument to `log10` must be a number, got %s", args[0].Type())
+			}
+			if val <= 0 {
+				return newError("cannot take logarithm of non-positive number")
+			}
+			return &Float{Value: math.Log10(val)}
+		},
+	},
+	{
+		Name: "exp",
+		Fn: func(args ...Object) Object {
+			if len(args) != 1 {
+				return newError("wrong number of arguments. got=%d, want=1", len(args))
+			}
+			var val float64
+			switch arg := args[0].(type) {
+			case *Integer:
+				val = float64(arg.Value)
+			case *Float:
+				val = arg.Value
+			default:
+				return newError("argument to `exp` must be a number, got %s", args[0].Type())
+			}
+			return &Float{Value: math.Exp(val)}
+		},
+	},
+	{
+		Name: "random",
+		Fn: func(args ...Object) Object {
+			if len(args) == 0 {
+				// Return random float between 0 and 1
+				return &Float{Value: rand.Float64()}
+			}
+			if len(args) == 1 {
+				// Return random integer from 0 to n-1
+				if args[0].Type() != INTEGER_OBJ {
+					return newError("argument to `random` must be INTEGER, got %s", args[0].Type())
+				}
+				n := args[0].(*Integer).Value
+				if n <= 0 {
+					return newError("argument to `random` must be positive")
+				}
+				return &Integer{Value: rand.Int63n(n)}
+			}
+			if len(args) == 2 {
+				// Return random integer from min to max (inclusive)
+				if args[0].Type() != INTEGER_OBJ || args[1].Type() != INTEGER_OBJ {
+					return newError("arguments to `random` must be INTEGER")
+				}
+				min := args[0].(*Integer).Value
+				max := args[1].(*Integer).Value
+				if min > max {
+					return newError("min must be less than or equal to max")
+				}
+				return &Integer{Value: min + rand.Int63n(max-min+1)}
+			}
+			return newError("wrong number of arguments. got=%d, want=0, 1, or 2", len(args))
+		},
+	},
+	// String functions
+	{
+		Name: "trim",
+		Fn: func(args ...Object) Object {
+			if len(args) < 1 || len(args) > 2 {
+				return newError("wrong number of arguments. got=%d, want=1 or 2", len(args))
+			}
+			if args[0].Type() != STRING_OBJ {
+				return newError("first argument to `trim` must be STRING, got %s", args[0].Type())
+			}
+			str := args[0].(*String).Value
+			if len(args) == 2 {
+				if args[1].Type() != STRING_OBJ {
+					return newError("second argument to `trim` must be STRING, got %s", args[1].Type())
+				}
+				cutset := args[1].(*String).Value
+				return &String{Value: strings.Trim(str, cutset)}
+			}
+			return &String{Value: strings.TrimSpace(str)}
+		},
+	},
+	{
+		Name: "trimLeft",
+		Fn: func(args ...Object) Object {
+			if len(args) < 1 || len(args) > 2 {
+				return newError("wrong number of arguments. got=%d, want=1 or 2", len(args))
+			}
+			if args[0].Type() != STRING_OBJ {
+				return newError("first argument to `trimLeft` must be STRING, got %s", args[0].Type())
+			}
+			str := args[0].(*String).Value
+			if len(args) == 2 {
+				if args[1].Type() != STRING_OBJ {
+					return newError("second argument to `trimLeft` must be STRING, got %s", args[1].Type())
+				}
+				cutset := args[1].(*String).Value
+				return &String{Value: strings.TrimLeft(str, cutset)}
+			}
+			return &String{Value: strings.TrimLeft(str, " \t\n\r")}
+		},
+	},
+	{
+		Name: "trimRight",
+		Fn: func(args ...Object) Object {
+			if len(args) < 1 || len(args) > 2 {
+				return newError("wrong number of arguments. got=%d, want=1 or 2", len(args))
+			}
+			if args[0].Type() != STRING_OBJ {
+				return newError("first argument to `trimRight` must be STRING, got %s", args[0].Type())
+			}
+			str := args[0].(*String).Value
+			if len(args) == 2 {
+				if args[1].Type() != STRING_OBJ {
+					return newError("second argument to `trimRight` must be STRING, got %s", args[1].Type())
+				}
+				cutset := args[1].(*String).Value
+				return &String{Value: strings.TrimRight(str, cutset)}
+			}
+			return &String{Value: strings.TrimRight(str, " \t\n\r")}
+		},
+	},
+	{
+		Name: "substring",
+		Fn: func(args ...Object) Object {
+			if len(args) < 2 || len(args) > 3 {
+				return newError("wrong number of arguments. got=%d, want=2 or 3", len(args))
+			}
+			if args[0].Type() != STRING_OBJ {
+				return newError("first argument to `substring` must be STRING, got %s", args[0].Type())
+			}
+			if args[1].Type() != INTEGER_OBJ {
+				return newError("second argument to `substring` must be INTEGER, got %s", args[1].Type())
+			}
+			str := args[0].(*String).Value
+			start := int(args[1].(*Integer).Value)
+			length := len(str)
+
+			// Handle negative start index
+			if start < 0 {
+				start = length + start
+			}
+			if start < 0 {
+				start = 0
+			}
+			if start > length {
+				return &String{Value: ""}
+			}
+
+			end := length
+			if len(args) == 3 {
+				if args[2].Type() != INTEGER_OBJ {
+					return newError("third argument to `substring` must be INTEGER, got %s", args[2].Type())
+				}
+				end = int(args[2].(*Integer).Value)
+				if end < 0 {
+					end = length + end
+				}
+				if end < start {
+					return &String{Value: ""}
+				}
+				if end > length {
+					end = length
+				}
+			}
+
+			return &String{Value: str[start:end]}
+		},
+	},
+	{
+		Name: "replace",
+		Fn: func(args ...Object) Object {
+			if len(args) < 3 || len(args) > 4 {
+				return newError("wrong number of arguments. got=%d, want=3 or 4", len(args))
+			}
+			if args[0].Type() != STRING_OBJ {
+				return newError("first argument to `replace` must be STRING, got %s", args[0].Type())
+			}
+			if args[1].Type() != STRING_OBJ {
+				return newError("second argument to `replace` must be STRING, got %s", args[1].Type())
+			}
+			if args[2].Type() != STRING_OBJ {
+				return newError("third argument to `replace` must be STRING, got %s", args[2].Type())
+			}
+			str := args[0].(*String).Value
+			old := args[1].(*String).Value
+			new := args[2].(*String).Value
+			n := -1 // Replace all by default
+			if len(args) == 4 {
+				if args[3].Type() != INTEGER_OBJ {
+					return newError("fourth argument to `replace` must be INTEGER, got %s", args[3].Type())
+				}
+				n = int(args[3].(*Integer).Value)
+			}
+			return &String{Value: strings.Replace(str, old, new, n)}
+		},
+	},
+	{
+		Name: "upper",
+		Fn: func(args ...Object) Object {
+			if len(args) != 1 {
+				return newError("wrong number of arguments. got=%d, want=1", len(args))
+			}
+			if args[0].Type() != STRING_OBJ {
+				return newError("argument to `upper` must be STRING, got %s", args[0].Type())
+			}
+			return &String{Value: strings.ToUpper(args[0].(*String).Value)}
+		},
+	},
+	{
+		Name: "lower",
+		Fn: func(args ...Object) Object {
+			if len(args) != 1 {
+				return newError("wrong number of arguments. got=%d, want=1", len(args))
+			}
+			if args[0].Type() != STRING_OBJ {
+				return newError("argument to `lower` must be STRING, got %s", args[0].Type())
+			}
+			return &String{Value: strings.ToLower(args[0].(*String).Value)}
+		},
+	},
+	{
+		Name: "startsWith",
+		Fn: func(args ...Object) Object {
+			if len(args) != 2 {
+				return newError("wrong number of arguments. got=%d, want=2", len(args))
+			}
+			if args[0].Type() != STRING_OBJ {
+				return newError("first argument to `startsWith` must be STRING, got %s", args[0].Type())
+			}
+			if args[1].Type() != STRING_OBJ {
+				return newError("second argument to `startsWith` must be STRING, got %s", args[1].Type())
+			}
+			str := args[0].(*String).Value
+			prefix := args[1].(*String).Value
+			return &Boolean{Value: strings.HasPrefix(str, prefix)}
+		},
+	},
+	{
+		Name: "endsWith",
+		Fn: func(args ...Object) Object {
+			if len(args) != 2 {
+				return newError("wrong number of arguments. got=%d, want=2", len(args))
+			}
+			if args[0].Type() != STRING_OBJ {
+				return newError("first argument to `endsWith` must be STRING, got %s", args[0].Type())
+			}
+			if args[1].Type() != STRING_OBJ {
+				return newError("second argument to `endsWith` must be STRING, got %s", args[1].Type())
+			}
+			str := args[0].(*String).Value
+			suffix := args[1].(*String).Value
+			return &Boolean{Value: strings.HasSuffix(str, suffix)}
+		},
+	},
+	{
+		Name: "repeat",
+		Fn: func(args ...Object) Object {
+			if len(args) != 2 {
+				return newError("wrong number of arguments. got=%d, want=2", len(args))
+			}
+			if args[0].Type() != STRING_OBJ {
+				return newError("first argument to `repeat` must be STRING, got %s", args[0].Type())
+			}
+			if args[1].Type() != INTEGER_OBJ {
+				return newError("second argument to `repeat` must be INTEGER, got %s", args[1].Type())
+			}
+			str := args[0].(*String).Value
+			count := int(args[1].(*Integer).Value)
+			if count < 0 {
+				return newError("repeat count cannot be negative")
+			}
+			return &String{Value: strings.Repeat(str, count)}
 		},
 	},
 	{

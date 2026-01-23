@@ -7,6 +7,7 @@ import (
 	"github.com/caokhang91/buddhist-go/pkg/ast"
 	"github.com/caokhang91/buddhist-go/pkg/code"
 	"github.com/caokhang91/buddhist-go/pkg/object"
+	"github.com/caokhang91/buddhist-go/pkg/token"
 )
 
 // Bytecode represents compiled bytecode
@@ -369,26 +370,10 @@ func (c *Compiler) Compile(node ast.Node) error {
 
 		// Add class to constants and emit OpClass
 		classIndex := c.addConstant(class)
+		c.emit(code.OpClass, classIndex)
+
 		// Store class in global scope
 		symbol := c.symbolTable.Define(node.Name.Value)
-		
-		if node.Parent != nil {
-			// Resolve parent (push it onto stack)
-			pSymbol, ok := c.symbolTable.Resolve(node.Parent.Value)
-			if !ok {
-				return fmt.Errorf("undefined parent class %s", node.Parent.Value)
-			}
-			c.loadSymbol(pSymbol)
-			
-			// Push class template
-			c.emit(code.OpClass, classIndex)
-			
-			// Link them
-			c.emit(code.OpInherit)
-		} else {
-			c.emit(code.OpClass, classIndex)
-		}
-
 		if symbol.Scope == GlobalScope {
 			c.emit(code.OpSetGlobal, symbol.Index)
 		} else {
@@ -491,26 +476,26 @@ func (c *Compiler) Compile(node ast.Node) error {
 		if node.Index == nil {
 			return fmt.Errorf("index expression requires index")
 		}
-		
-		// Check if this is property access (obj.property)
-		// If Index is an Identifier (from DOT syntax), treat it as property access
-		if ident, ok := node.Index.(*ast.Identifier); ok {
-			// Property access (obj.property) - use OpGetProperty
-			// This handles: this.property, super.property, obj.property
+		// Dot access: obj.property
+		// The parser represents this as IndexExpression with Token '.' and Index as Identifier.
+		// For dot access, the identifier is a property name (string), not a variable reference.
+		if node.Token.Type == token.DOT {
+			ident, ok := node.Index.(*ast.Identifier)
+			if !ok {
+				return fmt.Errorf("property access requires identifier after '.'")
+			}
 			err := c.Compile(node.Left)
 			if err != nil {
 				return err
 			}
-			// Push property name as string constant
 			propName := &object.String{Value: ident.Value}
 			propNameIndex := c.addConstant(propName)
 			c.emit(code.OpConstant, propNameIndex)
 			c.emit(code.OpGetProperty)
 			return nil
 		}
-		
-		// Regular index access (arr[index] or hash[key] with computed index)
-		// Index is an expression (not identifier), so compile it as expression
+
+		// Regular index access: arr[index] / hash[key] / instance["prop"]
 		err := c.Compile(node.Left)
 		if err != nil {
 			return err
@@ -533,9 +518,13 @@ func (c *Compiler) Compile(node ast.Node) error {
 			}
 			c.emit(code.OpArrayPush)
 		} else {
-			// Check if this is property assignment (obj.property = value)
-			if ident, ok := node.Index.(*ast.Identifier); ok {
-				// Property assignment - use OpSetProperty
+			// Property assignment: obj.property = value (dot syntax)
+			// Only treat Identifier index as property name when it came from '.' access.
+			if node.IndexToken.Type == token.DOT {
+				ident, ok := node.Index.(*ast.Identifier)
+				if !ok {
+					return fmt.Errorf("property assignment requires identifier after '.'")
+				}
 				propName := &object.String{Value: ident.Value}
 				propNameIndex := c.addConstant(propName)
 				c.emit(code.OpConstant, propNameIndex)
@@ -544,11 +533,10 @@ func (c *Compiler) Compile(node ast.Node) error {
 					return err
 				}
 				c.emit(code.OpSetProperty)
-				// Push the assigned value back (it's already on stack from OpSetProperty)
 				return nil
 			}
-			
-			// Regular index assignment (arr[index] = value)
+
+			// Regular index assignment: arr[index] = value
 			err = c.Compile(node.Index)
 			if err != nil {
 				return err

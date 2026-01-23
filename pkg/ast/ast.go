@@ -570,10 +570,11 @@ func (ae *AssignmentExpression) String() string {
 
 // IndexAssignmentExpression represents an assignment to an index: arr[0] = 1
 type IndexAssignmentExpression struct {
-	Token token.Token
-	Left  Expression
-	Index Expression
-	Value Expression
+	Token      token.Token // the '=' token
+	IndexToken token.Token // the '[' or '.' token from the original access
+	Left       Expression
+	Index      Expression
+	Value      Expression
 }
 
 func (iae *IndexAssignmentExpression) expressionNode()      {}
@@ -581,11 +582,18 @@ func (iae *IndexAssignmentExpression) TokenLiteral() string { return iae.Token.L
 func (iae *IndexAssignmentExpression) String() string {
 	var out bytes.Buffer
 	out.WriteString(iae.Left.String())
-	out.WriteString("[")
+	if iae.IndexToken.Type == token.DOT {
+		out.WriteString(".")
+	} else {
+		out.WriteString("[")
+	}
 	if iae.Index != nil {
 		out.WriteString(iae.Index.String())
 	}
-	out.WriteString("] = ")
+	if iae.IndexToken.Type != token.DOT {
+		out.WriteString("]")
+	}
+	out.WriteString(" = ")
 	out.WriteString(iae.Value.String())
 	return out.String()
 }
