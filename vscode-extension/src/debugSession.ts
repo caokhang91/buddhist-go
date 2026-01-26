@@ -21,11 +21,13 @@ import * as fs from 'fs';
 import { spawn, ChildProcess } from 'child_process';
 
 interface BuddhistDebuggerRequest {
+    seq?: number;
     command: string;
     args?: any;
 }
 
 interface BuddhistDebuggerResponse {
+    seq?: number;
     success: boolean;
     data?: any;
     error?: string;
@@ -55,6 +57,8 @@ export class BuddhistDebugSession extends DebugSession {
     private variableHandles: Handles<string>;
     private sourceFile: string = '';
     private programPath: string = '';
+    private requestSeq: number = 0;
+    private pendingCallbacks: Map<number, (response: BuddhistDebuggerResponse) => void> = new Map();
 
     public constructor() {
         super();
@@ -574,6 +578,15 @@ export class BuddhistDebugSession extends DebugSession {
     }
 
     private handleDebugServerMessage(message: BuddhistDebuggerResponse): void {
+        // Check if this is a response to a pending request
+        if (message.seq !== undefined && this.pendingCallbacks.has(message.seq)) {
+            const callback = this.pendingCallbacks.get(message.seq)!;
+            this.pendingCallbacks.delete(message.seq);
+            callback(message);
+            return;
+        }
+
+        // Handle events (messages without seq or not matching a pending request)
         if (message.data?.event === 'stopped') {
             this.sendEvent(
                 new StoppedEvent(
@@ -597,16 +610,24 @@ export class BuddhistDebugSession extends DebugSession {
     ): void {
         if (!this.debugServer) return;
 
+        // Assign sequence number to request
+        const seq = ++this.requestSeq;
+        request.seq = seq;
+
         const message = JSON.stringify(request) + '\n';
         this.debugServer.write(message);
 
         if (callback) {
             // Store callback for async response handling
-            // In a real implementation, you'd use request IDs
+            this.pendingCallbacks.set(seq, callback);
+
+            // Timeout to clean up stale callbacks (10 second timeout)
             setTimeout(() => {
-                // This is a simplified callback mechanism
-                // In production, you'd match request/response IDs
-            }, 100);
+                if (this.pendingCallbacks.has(seq)) {
+                    this.pendingCallbacks.delete(seq);
+                    callback({ success: false, error: 'Request timed out' });
+                }
+            }, 10000);
         }
     }
 }
