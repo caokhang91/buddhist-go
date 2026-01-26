@@ -1,0 +1,23 @@
+// Set Keyword Example - Buddhist Lang
+
+println("=== Set Keyword Example ===");
+
+// Declare variable with place
+place x = 10;
+println("Initial value: " + str(x));
+
+// Use set to assign new value
+set x = 20;
+println("After set: " + str(x));
+
+// Set can be used multiple times
+set x = 30;
+set x = x + 5;
+println("Final value: " + str(x));
+
+// Set works with different types
+place name = "Alice";
+set name = "Bob";
+println("Name: " + name);
+
+println("\n=== Demo Complete ===");

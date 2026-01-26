@@ -1,0 +1,64 @@
+// Test math functions
+println("=== Math Functions Test ===");
+
+println("sqrt(16) = " + str(sqrt(16)));
+println("sqrt(2) = " + str(sqrt(2)));
+
+println("pow(2, 10) = " + str(pow(2, 10)));
+println("pow(2.5, 2) = " + str(pow(2.5, 2)));
+
+println("abs(-5) = " + str(abs(-5)));
+println("abs(5) = " + str(abs(5)));
+println("abs(-3.14) = " + str(abs(-3.14)));
+
+println("floor(3.7) = " + str(floor(3.7)));
+println("floor(-3.7) = " + str(floor(-3.7)));
+
+println("ceil(3.2) = " + str(ceil(3.2)));
+println("ceil(-3.2) = " + str(ceil(-3.2)));
+
+println("round(3.4) = " + str(round(3.4)));
+println("round(3.5) = " + str(round(3.5)));
+println("round(3.6) = " + str(round(3.6)));
+
+println("sin(0) = " + str(sin(0)));
+println("cos(0) = " + str(cos(0)));
+println("tan(0) = " + str(tan(0)));
+
+println("log(2.718281828) = " + str(log(2.718281828)));
+println("log10(100) = " + str(log10(100)));
+println("exp(1) = " + str(exp(1)));
+
+println("random() = " + str(random()));
+println("random(10) = " + str(random(10)));
+println("random(5, 10) = " + str(random(5, 10)));
+
+println("");
+println("=== String Functions Test ===");
+
+println("trim('  hello  ') = '" + trim("  hello  ") + "'");
+println("trim('***hello***', '*') = '" + trim("***hello***", "*") + "'");
+
+println("trimLeft('  hello  ') = '" + trimLeft("  hello  ") + "'");
+println("trimRight('  hello  ') = '" + trimRight("  hello  ") + "'");
+
+println("upper('hello') = '" + upper("hello") + "'");
+println("lower('HELLO') = '" + lower("HELLO") + "'");
+
+println("substring('hello world', 0, 5) = '" + substring("hello world", 0, 5) + "'");
+println("substring('hello world', 6) = '" + substring("hello world", 6) + "'");
+println("substring('hello world', -5) = '" + substring("hello world", -5) + "'");
+
+println("replace('hello world', 'world', 'Buddhist') = '" + replace("hello world", "world", "Buddhist") + "'");
+println("replace('aaa', 'a', 'b', 2) = '" + replace("aaa", "a", "b", 2) + "'");
+
+println("startsWith('hello', 'he') = " + str(startsWith("hello", "he")));
+println("startsWith('hello', 'wo') = " + str(startsWith("hello", "wo")));
+
+println("endsWith('hello', 'lo') = " + str(endsWith("hello", "lo")));
+println("endsWith('hello', 'he') = " + str(endsWith("hello", "he")));
+
+println("repeat('ab', 3) = '" + repeat("ab", 3) + "'");
+
+println("");
+println("=== All tests passed! ===");

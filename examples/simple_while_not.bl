@@ -1,0 +1,5 @@
+place x = 3;
+while not (x == 0) {
+    println(x);
+    x = x - 1;
+}

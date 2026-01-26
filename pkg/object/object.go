@@ -558,6 +558,8 @@ type Class struct {
 	Name       string
 	Methods    map[string]*CompiledFunction
 	Properties []string // Property names for initialization
+	Parent     *Class   // Parent class for inheritance
+	ParentName string   // Parent class name (for deferred resolution)
 }
 
 func (c *Class) Type() ObjectType { return CLASS_OBJ }

@@ -42,6 +42,7 @@ var precedences = map[token.TokenType]int{
 	token.OR:       OR,
 	token.LPAREN:   CALL,
 	token.LBRACKET: INDEX,
+	token.DOT:      CALL, // Property/method access has same precedence as function calls
 	token.SEND:     ASSIGN, // Channel send should have same precedence as assignment
 }
 
@@ -89,6 +90,8 @@ func New(l lexer.TokenLexer) *Parser {
 	p.registerPrefix(token.CHANNEL, p.parseChannelExpression)
 	p.registerPrefix(token.SEND, p.parseReceiveExpression)
 	p.registerPrefix(token.LT, p.parseReceiveExpression) // Support < as prefix for channel receive
+	p.registerPrefix(token.THIS, p.parseThisExpression)
+	p.registerPrefix(token.SUPER, p.parseSuperExpression)
 
 	p.infixParseFns = make(map[token.TokenType]infixParseFn)
 	p.registerInfix(token.PLUS, p.parseInfixExpression)
@@ -106,6 +109,7 @@ func New(l lexer.TokenLexer) *Parser {
 	p.registerInfix(token.OR, p.parseInfixExpression)
 	p.registerInfix(token.LPAREN, p.parseCallExpression)
 	p.registerInfix(token.LBRACKET, p.parseIndexExpression)
+	p.registerInfix(token.DOT, p.parseDotExpression) // Property/method access
 	p.registerInfix(token.ASSIGN, p.parseAssignmentExpression)
 	p.registerInfix(token.SEND, p.parseSendExpression)
 
@@ -135,6 +139,18 @@ func (p *Parser) expectPeek(t token.TokenType) bool {
 		return true
 	}
 	p.peekError(t)
+	// Fail-fast: return false immediately on error
+	return false
+}
+
+// expectPeekFailFast is like expectPeek but stops parsing on error
+func (p *Parser) expectPeekFailFast(t token.TokenType) bool {
+	if p.peekTokenIs(t) {
+		p.nextToken()
+		return true
+	}
+	p.peekError(t)
+	// Fail-fast: stop parsing immediately
 	return false
 }
 
@@ -196,8 +212,10 @@ func (p *Parser) ParseProgram() *ast.Program {
 
 func (p *Parser) parseStatement() ast.Statement {
 	switch p.curToken.Type {
-	case token.LET:
+	case token.PLACE:
 		return p.parseLetStatement()
+	case token.SET:
+		return p.parseSetStatement()
 	case token.CONST:
 		return p.parseConstStatement()
 	case token.RETURN:
@@ -210,6 +228,8 @@ func (p *Parser) parseStatement() ast.Statement {
 		return p.parseBreakStatement()
 	case token.CONTINUE:
 		return p.parseContinueStatement()
+	case token.CLASS:
+		return p.parseClassStatement()
 	default:
 		return p.parseExpressionStatement()
 	}
@@ -217,6 +237,30 @@ func (p *Parser) parseStatement() ast.Statement {
 
 func (p *Parser) parseLetStatement() *ast.LetStatement {
 	stmt := &ast.LetStatement{Token: p.curToken}
+
+	if !p.expectPeek(token.IDENT) {
+		return nil
+	}
+
+	stmt.Name = &ast.Identifier{Token: p.curToken, Value: p.curToken.Literal}
+
+	if !p.expectPeek(token.ASSIGN) {
+		return nil
+	}
+
+	p.nextToken()
+
+	stmt.Value = p.parseExpression(LOWEST)
+
+	if p.peekTokenIs(token.SEMICOLON) {
+		p.nextToken()
+	}
+
+	return stmt
+}
+
+func (p *Parser) parseSetStatement() *ast.SetStatement {
+	stmt := &ast.SetStatement{Token: p.curToken}
 
 	if !p.expectPeek(token.IDENT) {
 		return nil
@@ -333,22 +377,45 @@ func (p *Parser) parseForStatement() *ast.ForStatement {
 func (p *Parser) parseWhileStatement() *ast.WhileStatement {
 	stmt := &ast.WhileStatement{Token: p.curToken}
 
-	if !p.expectPeek(token.LPAREN) {
+	// Fail-fast: stop immediately on parsing errors
+	if !p.expectPeekFailFast(token.LPAREN) {
 		return nil
 	}
 
 	p.nextToken()
 	stmt.Condition = p.parseExpression(LOWEST)
+	if stmt.Condition == nil {
+		return nil // Fail-fast: stop if condition parsing failed
+	}
 
-	if !p.expectPeek(token.RPAREN) {
+	if !p.expectPeekFailFast(token.RPAREN) {
 		return nil
 	}
 
-	if !p.expectPeek(token.LBRACE) {
+	if !p.expectPeekFailFast(token.LBRACE) {
 		return nil
 	}
 
 	stmt.Body = p.parseBlockStatement()
+	if stmt.Body == nil {
+		return nil // Fail-fast: stop if body parsing failed
+	}
+
+	// Check for optional until clause
+	if p.peekTokenIs(token.UNTIL) {
+		p.nextToken() // consume 'until'
+		if !p.expectPeekFailFast(token.LPAREN) {
+			return nil // Fail-fast: stop parsing on error
+		}
+		p.nextToken()
+		stmt.Until = p.parseExpression(LOWEST)
+		if stmt.Until == nil {
+			return nil // Fail-fast: stop if expression parsing failed
+		}
+		if !p.expectPeekFailFast(token.RPAREN) {
+			return nil // Fail-fast: stop parsing on error
+		}
+	}
 
 	return stmt
 }
@@ -491,15 +558,40 @@ func (p *Parser) parseGroupedExpression() ast.Expression {
 func (p *Parser) parseIfExpression() ast.Expression {
 	expression := &ast.IfExpression{Token: p.curToken}
 
+	// Support "if not (condition) then { ... }" syntax
+	hasNot := p.peekTokenIs(token.NOT)
+	var notToken token.Token
+	if hasNot {
+		p.nextToken() // consume "not"
+		notToken = p.curToken // store the NOT token for later use
+	}
+
 	if !p.expectPeek(token.LPAREN) {
 		return nil
 	}
 
 	p.nextToken()
-	expression.Condition = p.parseExpression(LOWEST)
+	condition := p.parseExpression(LOWEST)
+
+	// If "not" keyword was used, wrap the condition in a prefix expression with BANG operator
+	if hasNot {
+		expression.Condition = &ast.PrefixExpression{
+			Token:    token.Token{Type: token.BANG, Literal: "!", Line: notToken.Line, Column: notToken.Column},
+			Operator: "!",
+			Right:    condition,
+		}
+	} else {
+		expression.Condition = condition
+	}
 
 	if !p.expectPeek(token.RPAREN) {
 		return nil
+	}
+
+	// Support optional "then" keyword (e.g., "if (condition) then { ... }")
+	// If next token is THEN, consume it (optional)
+	if p.peekTokenIs(token.THEN) {
+		p.nextToken()
 	}
 
 	if !p.expectPeek(token.LBRACE) {
@@ -511,11 +603,33 @@ func (p *Parser) parseIfExpression() ast.Expression {
 	if p.peekTokenIs(token.ELSE) {
 		p.nextToken()
 
-		if !p.expectPeek(token.LBRACE) {
-			return nil
+		// Support "else if" - check if next token is IF
+		if p.peekTokenIs(token.IF) {
+			// Advance to IF token before parsing
+			p.nextToken()
+			// Parse "else if" as a nested if expression wrapped in a block statement
+			ifExpr := p.parseIfExpression()
+			if ifExpr == nil {
+				return nil
+			}
+			// Wrap the if expression in a block statement containing an expression statement
+			block := &ast.BlockStatement{
+				Token:      token.Token{Type: token.LBRACE, Literal: "{"},
+				Statements: []ast.Statement{
+					&ast.ExpressionStatement{
+						Token:      token.Token{Type: token.IF, Literal: "if"},
+						Expression: ifExpr,
+					},
+				},
+			}
+			expression.Alternative = block
+		} else {
+			// Regular "else" block
+			if !p.expectPeek(token.LBRACE) {
+				return nil
+			}
+			expression.Alternative = p.parseBlockStatement()
 		}
-
-		expression.Alternative = p.parseBlockStatement()
 	}
 
 	return expression
@@ -780,9 +894,10 @@ func (p *Parser) parseAssignmentExpression(left ast.Expression) ast.Expression {
 	indexExp, ok := left.(*ast.IndexExpression)
 	if ok {
 		exp := &ast.IndexAssignmentExpression{
-			Token: p.curToken,
-			Left:  indexExp.Left,
-			Index: indexExp.Index,
+			Token:      p.curToken,
+			IndexToken: indexExp.Token,
+			Left:       indexExp.Left,
+			Index:      indexExp.Index,
 		}
 
 		p.nextToken()
@@ -794,4 +909,62 @@ func (p *Parser) parseAssignmentExpression(left ast.Expression) ast.Expression {
 	msg := fmt.Sprintf("line %d: cannot assign to %s", p.curToken.Line, left.String())
 	p.errors = append(p.errors, msg)
 	return nil
+}
+
+// parseClassStatement parses a class declaration
+func (p *Parser) parseClassStatement() *ast.ClassStatement {
+	stmt := &ast.ClassStatement{Token: p.curToken}
+
+	if !p.expectPeek(token.IDENT) {
+		return nil
+	}
+
+	stmt.Name = &ast.Identifier{Token: p.curToken, Value: p.curToken.Literal}
+
+	// Check for 'extends' keyword
+	if p.peekTokenIs(token.EXTENDS) {
+		p.nextToken() // consume 'extends'
+		if !p.expectPeek(token.IDENT) {
+			return nil
+		}
+		stmt.Parent = &ast.Identifier{Token: p.curToken, Value: p.curToken.Literal}
+	}
+
+	if !p.expectPeek(token.LBRACE) {
+		return nil
+	}
+
+	stmt.Body = p.parseBlockStatement()
+
+	return stmt
+}
+
+// parseThisExpression parses the 'this' keyword
+func (p *Parser) parseThisExpression() ast.Expression {
+	return &ast.ThisExpression{Token: p.curToken}
+}
+
+// parseSuperExpression parses the 'super' keyword
+func (p *Parser) parseSuperExpression() ast.Expression {
+	return &ast.SuperExpression{Token: p.curToken}
+}
+
+// parseDotExpression parses property/method access: obj.property or obj.method()
+func (p *Parser) parseDotExpression(left ast.Expression) ast.Expression {
+	exp := &ast.IndexExpression{
+		Token: p.curToken,
+		Left:  left,
+	}
+
+	p.nextToken()
+
+	if !p.curTokenIs(token.IDENT) {
+		p.errors = append(p.errors, fmt.Sprintf("line %d: expected property name after '.'", p.curToken.Line))
+		return nil
+	}
+
+	// Use the identifier as the index (property name)
+	exp.Index = &ast.Identifier{Token: p.curToken, Value: p.curToken.Literal}
+
+	return exp
 }

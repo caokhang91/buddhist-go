@@ -39,7 +39,7 @@
       "patterns": [
         {
           "name": "keyword.control.buddhist",
-          "match": "\\b(fn|let|const|if|else|return|for|while|break|continue|spawn|try|catch|finally|throw|import|export|from|class)\\b"
+          "match": "\\b(fn|let|const|if|else|then|not|return|for|while|break|continue|spawn|try|catch|finally|throw|import|export|from|class)\\b"
         },
         {
           "name": "constant.language.buddhist",

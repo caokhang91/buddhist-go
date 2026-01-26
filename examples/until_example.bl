@@ -1,0 +1,11 @@
+// Until clause example - Buddhist Lang
+
+println("=== Until Clause Example ===");
+
+place i = 0;
+while (i < 10) {
+    i = i + 1;
+    println("i = " + str(i));
+} until (i > 5)
+
+println("\nLoop exited when i > 5");

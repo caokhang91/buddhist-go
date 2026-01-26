@@ -1,6 +1,8 @@
 package lexer
 
 import (
+	"strings"
+
 	"github.com/caokhang91/buddhist-go/pkg/token"
 )
 
@@ -137,6 +139,8 @@ func (l *Lexer) NextToken() token.Token {
 		tok = token.New(token.SEMICOLON, string(l.ch), line, column)
 	case ':':
 		tok = token.New(token.COLON, string(l.ch), line, column)
+	case '.':
+		tok = token.New(token.DOT, string(l.ch), line, column)
 	case ',':
 		tok = token.New(token.COMMA, string(l.ch), line, column)
 	case '(':
@@ -244,9 +248,10 @@ func (l *Lexer) readNumber() token.Token {
 	return token.Token{Type: token.INT, Literal: literal}
 }
 
-// readString reads a string literal
+// readString reads a string literal and processes escape sequences
 func (l *Lexer) readString() string {
-	position := l.position + 1
+	var result strings.Builder
+	
 	for {
 		l.readChar()
 		if l.ch == '"' || l.ch == 0 {
@@ -255,11 +260,32 @@ func (l *Lexer) readString() string {
 		// Handle escape sequences
 		if l.ch == '\\' {
 			l.readChar()
+			switch l.ch {
+			case 'n':
+				result.WriteByte('\n')
+			case 't':
+				result.WriteByte('\t')
+			case 'r':
+				result.WriteByte('\r')
+			case '\\':
+				result.WriteByte('\\')
+			case '"':
+				result.WriteByte('"')
+			case '\'':
+				result.WriteByte('\'')
+			case '0':
+				result.WriteByte('\000')
+			default:
+				// Unknown escape sequence, include both characters
+				result.WriteByte('\\')
+				result.WriteByte(l.ch)
+			}
+		} else {
+			result.WriteByte(l.ch)
 		}
 	}
-	result := l.input[position:l.position]
 	l.readChar() // consume closing quote
-	return result
+	return result.String()
 }
 
 // isLetter checks if the character is a letter

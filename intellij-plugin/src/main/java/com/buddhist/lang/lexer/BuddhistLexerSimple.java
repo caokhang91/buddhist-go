@@ -27,6 +27,7 @@ public class BuddhistLexerSimple extends LexerBase {
         KEYWORDS.put("false", BuddhistTypes.FALSE);
         KEYWORDS.put("if", BuddhistTypes.IF);
         KEYWORDS.put("else", BuddhistTypes.ELSE);
+        KEYWORDS.put("then", BuddhistTypes.THEN);
         KEYWORDS.put("return", BuddhistTypes.RETURN);
         KEYWORDS.put("for", BuddhistTypes.FOR);
         KEYWORDS.put("while", BuddhistTypes.WHILE);

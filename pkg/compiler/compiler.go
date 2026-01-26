@@ -7,6 +7,7 @@ import (
 	"github.com/caokhang91/buddhist-go/pkg/ast"
 	"github.com/caokhang91/buddhist-go/pkg/code"
 	"github.com/caokhang91/buddhist-go/pkg/object"
+	"github.com/caokhang91/buddhist-go/pkg/token"
 )
 
 // Bytecode represents compiled bytecode
@@ -245,6 +246,25 @@ func (c *Compiler) Compile(node ast.Node) error {
 
 		if symbol.Scope == GlobalScope {
 			c.emit(code.OpSetGlobal, symbol.Index)
+		} else {
+			c.emit(code.OpSetLocal, symbol.Index)
+		}
+
+	case *ast.SetStatement:
+		// Set statement: set x = value;
+		// This is an assignment to an existing variable
+		symbol, ok := c.symbolTable.Resolve(node.Name.Value)
+		if !ok {
+			return fmt.Errorf("undefined variable %s", node.Name.Value)
+		}
+
+		err := c.Compile(node.Value)
+		if err != nil {
+			return err
+		}
+
+		if symbol.Scope == GlobalScope {
+			c.emit(code.OpSetGlobal, symbol.Index)
 			c.emit(code.OpGetGlobal, symbol.Index) // Push the assigned value back
 		} else {
 			c.emit(code.OpSetLocal, symbol.Index)
@@ -263,6 +283,113 @@ func (c *Compiler) Compile(node ast.Node) error {
 		} else {
 			c.emit(code.OpSetLocal, symbol.Index)
 		}
+
+	case *ast.ClassStatement:
+		// Compile class body to extract methods and properties
+		methods := make(map[string]*object.CompiledFunction)
+		properties := []string{}
+		var constructor *object.CompiledFunction
+
+		// Note: Parent class resolution will be done at runtime
+		// because parent class might be defined after this class
+		// We store the parent name in the class and resolve it when needed
+
+		// Process class body statements
+		for _, stmt := range node.Body.Statements {
+			switch s := stmt.(type) {
+			case *ast.LetStatement:
+				// Property declaration: place name = value;
+				// Just record the property name, don't compile the statement
+				properties = append(properties, s.Name.Value)
+			case *ast.ExpressionStatement:
+				// Could be a function literal (method) or other expression
+				if fnLit, ok := s.Expression.(*ast.FunctionLiteral); ok {
+					// This is a method definition
+					c.enterScope()
+					// 'this' will be passed as first argument, so define it as first parameter
+					c.symbolTable.Define("this")
+					
+					for _, p := range fnLit.Parameters {
+						c.symbolTable.Define(p.Value)
+					}
+
+					err := c.Compile(fnLit.Body)
+					if err != nil {
+						return err
+					}
+
+					if c.lastInstructionIs(code.OpPop) {
+						c.replaceLastPopWithReturn()
+					}
+					if !c.lastInstructionIs(code.OpReturnValue) {
+						c.emit(code.OpReturn)
+					}
+
+					numLocals := c.symbolTable.numDefinitions
+					instructions := c.leaveScope()
+
+					compiledFn := &object.CompiledFunction{
+						Instructions:  instructions,
+						NumLocals:     numLocals,
+						NumParameters: len(fnLit.Parameters) + 1, // +1 for 'this'
+					}
+
+					methodName := fnLit.Name
+					if methodName == "" {
+						// Anonymous method - skip
+						continue
+					}
+					
+					// Check if this is a constructor (named 'init' or 'constructor')
+					if methodName == "init" || methodName == "constructor" {
+						constructor = compiledFn
+					} else {
+						methods[methodName] = compiledFn
+					}
+				}
+			}
+		}
+
+		// Create class object
+		parentName := ""
+		if node.Parent != nil {
+			parentName = node.Parent.Value
+		}
+		class := &object.Class{
+			Name:       node.Name.Value,
+			Methods:    methods,
+			Properties: properties,
+			Parent:     nil, // Will be resolved at runtime
+			ParentName: parentName,
+		}
+		
+		// Store constructor separately if exists
+		if constructor != nil {
+			methods["init"] = constructor
+		}
+
+		// Add class to constants and emit OpClass
+		classIndex := c.addConstant(class)
+		c.emit(code.OpClass, classIndex)
+
+		// Store class in global scope
+		symbol := c.symbolTable.Define(node.Name.Value)
+		if symbol.Scope == GlobalScope {
+			c.emit(code.OpSetGlobal, symbol.Index)
+		} else {
+			c.emit(code.OpSetLocal, symbol.Index)
+		}
+		
+		// If parent exists, we need to resolve it after both classes are defined
+		// For now, we'll resolve it at runtime when the class is instantiated
+
+	case *ast.ThisExpression:
+		// Push 'this' onto stack
+		c.emit(code.OpThis)
+
+	case *ast.SuperExpression:
+		// Push 'super' onto stack
+		c.emit(code.OpSuper)
 
 	case *ast.Identifier:
 		symbol, ok := c.symbolTable.Resolve(node.Value)
@@ -349,6 +476,26 @@ func (c *Compiler) Compile(node ast.Node) error {
 		if node.Index == nil {
 			return fmt.Errorf("index expression requires index")
 		}
+		// Dot access: obj.property
+		// The parser represents this as IndexExpression with Token '.' and Index as Identifier.
+		// For dot access, the identifier is a property name (string), not a variable reference.
+		if node.Token.Type == token.DOT {
+			ident, ok := node.Index.(*ast.Identifier)
+			if !ok {
+				return fmt.Errorf("property access requires identifier after '.'")
+			}
+			err := c.Compile(node.Left)
+			if err != nil {
+				return err
+			}
+			propName := &object.String{Value: ident.Value}
+			propNameIndex := c.addConstant(propName)
+			c.emit(code.OpConstant, propNameIndex)
+			c.emit(code.OpGetProperty)
+			return nil
+		}
+
+		// Regular index access: arr[index] / hash[key] / instance["prop"]
 		err := c.Compile(node.Left)
 		if err != nil {
 			return err
@@ -371,6 +518,25 @@ func (c *Compiler) Compile(node ast.Node) error {
 			}
 			c.emit(code.OpArrayPush)
 		} else {
+			// Property assignment: obj.property = value (dot syntax)
+			// Only treat Identifier index as property name when it came from '.' access.
+			if node.IndexToken.Type == token.DOT {
+				ident, ok := node.Index.(*ast.Identifier)
+				if !ok {
+					return fmt.Errorf("property assignment requires identifier after '.'")
+				}
+				propName := &object.String{Value: ident.Value}
+				propNameIndex := c.addConstant(propName)
+				c.emit(code.OpConstant, propNameIndex)
+				err = c.Compile(node.Value)
+				if err != nil {
+					return err
+				}
+				c.emit(code.OpSetProperty)
+				return nil
+			}
+
+			// Regular index assignment: arr[index] = value
 			err = c.Compile(node.Index)
 			if err != nil {
 				return err
@@ -430,7 +596,44 @@ func (c *Compiler) Compile(node ast.Node) error {
 		}
 		c.emit(code.OpReturnValue)
 
+	case *ast.SendStatement:
+		err := c.Compile(node.Channel)
+		if err != nil {
+			return err
+		}
+		err = c.Compile(node.Value)
+		if err != nil {
+			return err
+		}
+		c.emit(code.OpSend)
+
 	case *ast.CallExpression:
+		// Check if this is a method call (obj.method())
+		if indexExp, ok := node.Function.(*ast.IndexExpression); ok {
+			if ident, ok := indexExp.Index.(*ast.Identifier); ok {
+				// This is obj.method() - compile as method call
+				err := c.Compile(indexExp.Left)
+				if err != nil {
+					return err
+				}
+				// Push method name as string
+				methodName := &object.String{Value: ident.Value}
+				methodNameIndex := c.addConstant(methodName)
+				c.emit(code.OpConstant, methodNameIndex)
+
+				for _, a := range node.Arguments {
+					err := c.Compile(a)
+					if err != nil {
+						return err
+					}
+				}
+
+				c.emit(code.OpCallMethod, len(node.Arguments))
+				return nil
+			}
+		}
+
+		// Regular function call
 		err := c.Compile(node.Function)
 		if err != nil {
 			return err
@@ -448,6 +651,7 @@ func (c *Compiler) Compile(node ast.Node) error {
 	case *ast.WhileStatement:
 		loopStart := len(c.currentInstructions())
 
+		// Check main condition
 		err := c.Compile(node.Condition)
 		if err != nil {
 			return err
@@ -455,15 +659,37 @@ func (c *Compiler) Compile(node ast.Node) error {
 
 		jumpNotTruthyPos := c.emit(code.OpJumpNotTruthy, 9999)
 
+		// Compile body
 		err = c.Compile(node.Body)
 		if err != nil {
 			return err
 		}
 
+		// Check until condition if it exists
+		var jumpUntilPos int
+		if node.Until != nil {
+			err = c.Compile(node.Until)
+			if err != nil {
+				return err
+			}
+			// Negate the until condition: if until is true, we want to exit
+			// OpBang will make true -> false, false -> true
+			// Then OpJumpNotTruthy will jump if the negated value is false (i.e., original until was true)
+			c.emit(code.OpBang)
+			// If until is true (now false after negation), jump to afterLoop
+			jumpUntilPos = c.emit(code.OpJumpNotTruthy, 9999)
+		}
+
+		// Jump back to loop start
 		c.emit(code.OpJump, loopStart)
 
 		afterLoopPos := len(c.currentInstructions())
 		c.changeOperand(jumpNotTruthyPos, afterLoopPos)
+		
+		// Fix until jump if it exists
+		if node.Until != nil {
+			c.changeOperand(jumpUntilPos, afterLoopPos)
+		}
 
 	case *ast.ForStatement:
 		// Compile init

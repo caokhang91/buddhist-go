@@ -48,7 +48,8 @@ const (
 	COMMA     TokenType = ","
 	SEMICOLON TokenType = ";"
 	COLON     TokenType = ":"
-	ARROW     TokenType = "=>" // PHP-style array key-value separator
+	DOT       TokenType = "."   // Property/method access
+	ARROW     TokenType = "=>"  // PHP-style array key-value separator
 
 	LPAREN   TokenType = "("
 	RPAREN   TokenType = ")"
@@ -59,15 +60,19 @@ const (
 
 	// Keywords
 	FUNCTION TokenType = "FUNCTION"
-	LET      TokenType = "LET"
+	PLACE    TokenType = "PLACE"
+	SET      TokenType = "SET"
 	CONST    TokenType = "CONST"
 	TRUE     TokenType = "TRUE"
 	FALSE    TokenType = "FALSE"
 	IF       TokenType = "IF"
 	ELSE     TokenType = "ELSE"
+	THEN     TokenType = "THEN"
+	NOT      TokenType = "NOT"
 	RETURN   TokenType = "RETURN"
 	FOR      TokenType = "FOR"
 	WHILE    TokenType = "WHILE"
+	UNTIL    TokenType = "UNTIL"
 	BREAK    TokenType = "BREAK"
 	CONTINUE TokenType = "CONTINUE"
 	NULL     TokenType = "NULL"
@@ -79,7 +84,10 @@ const (
 	RECEIVE TokenType = "->"      // Nhận từ channel
 
 	// Class keywords
-	CLASS TokenType = "CLASS" // Class declaration
+	CLASS   TokenType = "CLASS"   // Class declaration
+	THIS    TokenType = "THIS"    // 'this' keyword
+	EXTENDS TokenType = "EXTENDS" // 'extends' keyword for inheritance
+	SUPER   TokenType = "SUPER"   // 'super' keyword for parent class access
 
 	// Module keywords
 	IMPORT TokenType = "IMPORT" // Import statement
@@ -96,21 +104,28 @@ const (
 // keywords maps keyword strings to their token types
 var keywords = map[string]TokenType{
 	"fn":       FUNCTION,
-	"let":      LET,
+	"place":   PLACE,
+	"set":      SET,
 	"const":    CONST,
 	"true":     TRUE,
 	"false":    FALSE,
 	"if":       IF,
 	"else":     ELSE,
+	"then":     THEN,
+	"not":      NOT,
 	"return":   RETURN,
 	"for":      FOR,
 	"while":    WHILE,
+	"until":    UNTIL,
 	"break":    BREAK,
 	"continue": CONTINUE,
 	"null":     NULL,
 	"spawn":    SPAWN,
 	"channel":  CHANNEL,
 	"class":    CLASS,
+	"this":     THIS,
+	"extends":  EXTENDS,
+	"super":    SUPER,
 	"import":   IMPORT,
 	"export":   EXPORT,
 	"from":     FROM,

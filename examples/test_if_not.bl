@@ -1,0 +1,47 @@
+// Test if not syntax
+println("=== Testing if not syntax ===");
+println("");
+
+place x = 5;
+place y = 0;
+
+// Test 1: if not (condition) then
+println("Test 1: if not (x == 0) then");
+if not (x == 0) then {
+    println("  ✓ x is not zero");
+}
+
+// Test 2: if not (condition) then else
+println("");
+println("Test 2: if not (x < 0) then ... else");
+if not (x < 0) then {
+    println("  ✓ x is not negative");
+} else {
+    println("  ✗ x is negative");
+}
+
+// Test 3: if not with comparison
+println("");
+println("Test 3: if not (y > 10) then");
+if not (y > 10) then {
+    println("  ✓ y is not greater than 10");
+}
+
+// Test 4: Regular if still works (backward compatibility)
+println("");
+println("Test 4: Regular if (backward compatibility)");
+if (x > 0) then {
+    println("  ✓ x is positive");
+}
+
+// Test 5: if not with else if
+println("");
+println("Test 5: if not with else if");
+if not (x == 0) then {
+    println("  ✓ x is not zero");
+} else if (x == 5) {
+    println("  x equals 5");
+}
+
+println("");
+println("=== All tests completed ===");

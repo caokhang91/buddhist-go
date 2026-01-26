@@ -1,0 +1,4 @@
+place x = 3;
+if not (x==5){
+    println(x=x*3);
+}

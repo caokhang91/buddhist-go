@@ -3,26 +3,59 @@
 println("=== HTTP Request Demo ===");
 
 // GET with query parameters (curl-style)
-let getConfig = {
+place getConfig = {
     "method": "GET",
     "url": "https://httpbin.org/get",
     "params": {"q": "buddhist-go", "page": 1},
     "headers": {"User-Agent": "buddhist-go"}
 };
 
-let getResponse = http_request(getConfig);
+place getResponse = http_request(getConfig);
 println("GET status: " + str(getResponse["status"]));
 println("GET body: " + getResponse["body"]);
 
 // POST with body using curl alias
-let postConfig = {
+place postConfig = {
     "method": "POST",
     "url": "https://httpbin.org/post",
     "headers": {"Content-Type": "text/plain"},
     "body": "hello from buddhist-go"
 };
 
-let postResponse = curl(postConfig);
+place postResponse = curl(postConfig);
 println("POST status: " + str(postResponse["status"]));
 
-println("=== Demo Complete ===");
+println("\n=== HTTP Request with Progress Callback ===");
+
+// GET request with progress callback
+place getConfigWithProgress = {
+    "method": "GET",
+    "url": "https://httpbin.org/get",
+    "params": {"test": "progress"},
+    "headers": {"User-Agent": "buddhist-go"},
+    "progress": fn(update) {
+        place stage = update["stage"];
+        println("Progress: " + stage);
+        if (stage == "connecting") {
+            println("  Connecting to: " + update["url"]);
+        } else if (stage == "sending") {
+            println("  Sending " + update["method"] + " request...");
+        } else if (stage == "received") {
+            println("  Received response: status " + str(update["status"]));
+        } else if (stage == "reading") {
+            println("  Reading response body...");
+        } else if (stage == "complete") {
+            place statusStr = "  Complete! Status: " + str(update["status"]);
+            place bodySizeStr = ", Body size: " + str(update["bodySize"]) + " bytes";
+            place durationStr = ", Duration: " + str(update["duration"]) + " ms";
+            println(statusStr + bodySizeStr + durationStr);
+        } else if (stage == "error") {
+            println("  Error: " + update["error"]);
+        }
+    }
+};
+
+place progressResponse = http_request(getConfigWithProgress);
+println("Final status: " + str(progressResponse["status"]));
+
+println("\n=== Demo Complete ===");

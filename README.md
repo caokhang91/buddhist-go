@@ -26,10 +26,10 @@ git clone https://github.com/caokhang91/buddhist-go.git
 cd buddhist-go
 
 # Build the interpreter
-go build -o buddhist ./cmd/buddhist
+go build -o buddhist-go .
 
 # Or install directly
-go install ./cmd/buddhist
+go install .
 ```
 
 ### From Release
@@ -41,7 +41,7 @@ Download pre-built binaries from the [Releases](https://github.com/caokhang91/bu
 ### Interactive REPL
 
 ```bash
-./buddhist
+./buddhist-go
 ```
 
 ```
@@ -52,7 +52,7 @@ Download pre-built binaries from the [Releases](https://github.com/caokhang91/bu
 
 >>> println("Hello, World!")
 Hello, World!
->>> let x = 10
+>>> place x = 10
 >>> x * 2
 20
 ```
@@ -60,7 +60,7 @@ Hello, World!
 ### Run a Script
 
 ```bash
-./buddhist examples/hello.bl
+./buddhist-go examples/hello.bl
 ```
 
 ## Language Syntax
@@ -68,9 +68,9 @@ Hello, World!
 ### Variables
 
 ```javascript
-let x = 5;
-const PI = 3.14159;
-x = x + 1;
+place x = 5;
+const PI = 3.14;
+set x = x + 1;
 ```
 
 ### Functions
@@ -81,11 +81,11 @@ fn add(a, b) {
 }
 
 // Anonymous functions
-let multiply = fn(a, b) { a * b };
+place multiply = fn(a, b) { a * b };
 
 // Closures
 fn counter() {
-    let count = 0;
+    place count = 0;
     return fn() {
         count = count + 1;
         return count;
@@ -110,7 +110,7 @@ while (x < 10) {
 }
 
 // For loop
-for (let i = 0; i < 10; i = i + 1) {
+for (place i = 0; i < 10; i = i + 1) {
     println(i);
 }
 ```
@@ -119,12 +119,12 @@ for (let i = 0; i < 10; i = i + 1) {
 
 ```javascript
 // Standard arrays
-let arr = [1, 2, 3, 4, 5];
+place arr = [1, 2, 3, 4, 5];
 println(arr[0]);  // 1
 println(len(arr)); // 5
 
 // PHP-style arrays with keys
-let map = [
+place map = [
     "name" => "Buddhist",
     "version" => "1.0.0",
     0 => "indexed"
@@ -135,7 +135,7 @@ println(map["name"]);  // Buddhist
 ### Hash Maps
 
 ```javascript
-let person = {
+place person = {
     "name": "John",
     "age": 30
 };
@@ -146,7 +146,7 @@ println(person["name"]);  // John
 
 ```javascript
 // Create a channel
-let ch = channel;
+place ch = channel;
 
 // Spawn a goroutine
 spawn fn() {
@@ -154,25 +154,91 @@ spawn fn() {
 };
 
 // Receive from channel
-let msg = <-ch;
+place msg = <-ch;
 println(msg);
 ```
 
 ## Built-in Functions
 
+### I/O Functions
+
 | Function | Description |
 |----------|-------------|
 | `println(...)` | Print values with newline |
 | `print(...)` | Print values without newline |
+
+### Type Functions
+
+| Function | Description |
+|----------|-------------|
 | `len(x)` | Get length of array/string |
-| `first(arr)` | Get first element of array |
-| `last(arr)` | Get last element of array |
-| `rest(arr)` | Get array without first element |
-| `push(arr, val)` | Append value to array |
 | `type(x)` | Get type of value |
 | `str(x)` | Convert to string |
 | `int(x)` | Convert to integer |
 | `float(x)` | Convert to float |
+
+### Array Functions
+
+| Function | Description |
+|----------|-------------|
+| `first(arr)` | Get first element of array |
+| `last(arr)` | Get last element of array |
+| `rest(arr)` | Get array without first element |
+| `push(arr, val)` | Append value to array |
+| `slice(arr, start, end)` | Get a slice of array |
+| `range(end)` or `range(start, end, step)` | Generate array of numbers |
+| `map(arr, fn)` | Apply function to each element |
+| `filter(arr, fn)` | Filter elements by predicate |
+| `reduce(arr, fn, initial)` | Reduce array to single value |
+| `reverse(arr)` | Reverse array |
+| `concat(arr1, arr2, ...)` | Concatenate arrays |
+| `contains(arr, val)` | Check if array contains value |
+| `indexOf(arr, val)` | Get index of value in array |
+| `unique(arr)` | Remove duplicate elements |
+| `flatten(arr)` | Flatten nested arrays |
+| `sum(arr)` | Sum of numeric array |
+| `min(arr)` | Minimum value in array |
+| `max(arr)` | Maximum value in array |
+| `avg(arr)` | Average of numeric array |
+
+### Math Functions
+
+| Function | Description |
+|----------|-------------|
+| `sqrt(x)` | Square root |
+| `pow(base, exp)` | Power function |
+| `abs(x)` | Absolute value |
+| `floor(x)` | Round down to integer |
+| `ceil(x)` | Round up to integer |
+| `round(x)` | Round to nearest integer |
+| `sin(x)` | Sine (radians) |
+| `cos(x)` | Cosine (radians) |
+| `tan(x)` | Tangent (radians) |
+| `log(x)` | Natural logarithm |
+| `log10(x)` | Base-10 logarithm |
+| `exp(x)` | Exponential (e^x) |
+| `random()` | Random float 0-1 |
+| `random(n)` | Random integer 0 to n-1 |
+| `random(min, max)` | Random integer min to max |
+
+### String Functions
+
+| Function | Description |
+|----------|-------------|
+| `split(str, sep)` | Split string by separator |
+| `join(arr, sep)` | Join array elements with separator |
+| `trim(str)` | Remove leading/trailing whitespace |
+| `trim(str, chars)` | Remove specific characters |
+| `trimLeft(str)` | Remove leading whitespace |
+| `trimRight(str)` | Remove trailing whitespace |
+| `upper(str)` | Convert to uppercase |
+| `lower(str)` | Convert to lowercase |
+| `substring(str, start, end)` | Extract substring |
+| `replace(str, old, new)` | Replace all occurrences |
+| `replace(str, old, new, n)` | Replace first n occurrences |
+| `startsWith(str, prefix)` | Check if string starts with prefix |
+| `endsWith(str, suffix)` | Check if string ends with suffix |
+| `repeat(str, n)` | Repeat string n times |
 
 ## Project Structure
 
@@ -218,7 +284,7 @@ The interpreter includes several performance optimizations:
 ### Benchmarking
 
 ```bash
-./buddhist --benchmark examples/benchmark.bl
+./buddhist-go --benchmark examples/benchmark.bl
 ```
 
 ## Development
@@ -238,7 +304,8 @@ go test ./...
 ### Running Examples
 
 ```bash
-go run ./cmd/buddhist examples/hello.bl
+go run . examples/hello.bl
+go run . examples/fizzbuzz.bl
 ```
 
 ## IDE Support
@@ -248,6 +315,41 @@ An IntelliJ/WebStorm plugin is available in the `intellij-plugin/` directory for
 ## Contributing
 
 Contributions are welcome! Please feel free to submit a Pull Request.
+
+## Roadmap
+
+### Short-term (1-2 weeks)
+- ✅ Progress callbacks for HTTP requests
+- ✅ Escape sequence support in strings (`\n`, `\t`, etc.)
+- ✅ Math functions: `sqrt()`, `pow()`, `abs()`, `floor()`, `ceil()`, `round()`, `sin()`, `cos()`, `tan()`, `log()`, `exp()`, `random()`
+- ✅ String functions: `split()`, `join()`, `trim()`, `substring()`, `replace()`, `upper()`, `lower()`, `startsWith()`, `endsWith()`, `repeat()`
+- ✅ Array functions: `map()`, `filter()`, `reduce()`, `reverse()`, `contains()`, `indexOf()`, `unique()`, `flatten()`, `sum()`, `min()`, `max()`, `avg()`
+- 🔲 File I/O: `readFile()`, `writeFile()`, `readDir()`
+
+### Medium-term (1 month)
+- 🔲 Module/Import system: `import "utils.bl"`
+- 🔲 Better error handling with stack traces
+- 🔲 Array functions: `sort()`, `find()`
+- 🔲 Date/Time functions: `now()`, `formatDate()`, `parseDate()`
+- 🔲 Code formatter: `buddhist fmt`
+- 🔲 Linter: `buddhist lint`
+
+### Long-term (2-3 months)
+- 🔲 Testing framework with built-in test runner
+- 🔲 Package manager for dependency management
+- 🔲 OOP support (classes and objects)
+- 🔲 Type system (optional type hints)
+- 🔲 Standard library with collections, networking, crypto
+- 🔲 Profiler and performance analysis tools
+- 🔲 Documentation generator
+
+### IDE/Editor Enhancements
+- 🔲 Code completion (IntelliSense)
+- 🔲 Go to definition
+- 🔲 Find usages
+- 🔲 Refactoring support
+- 🔲 Real-time error highlighting
+- 🔲 Better REPL with history and auto-completion
 
 ## License
 

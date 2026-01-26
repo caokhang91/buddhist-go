@@ -35,7 +35,13 @@ func (f *Frame) Instructions() code.Instructions {
 	return f.cl.Fn.Instructions
 }
 
-// VM represents the virtual machine
+// VM represents the virtual machine with optimized execution
+// Key optimizations:
+// 1. Cached frame references
+// 2. Inline push/pop operations
+// 3. Direct stack access without bounds checking
+// 4. Use of object pooling
+// 5. Fast paths for integer operations
 type VM struct {
 	constants []object.Object
 
@@ -97,187 +103,400 @@ func (vm *VM) StackTop() object.Object {
 	return vm.stack[vm.sp-1]
 }
 
-// Run executes the bytecode
+// Run executes the bytecode with optimizations
 func (vm *VM) Run() error {
+	// Register closure caller for progress callbacks in builtin functions
+	object.SetClosureCaller(func(closure *object.Closure, args ...object.Object) (object.Object, error) {
+		return CallClosure(closure, vm.constants, vm.globals, args...)
+	})
+	defer object.ClearClosureCaller()
+
+	// Cache frequently accessed values
 	var ip int
 	var ins code.Instructions
 	var op code.Opcode
 
-	for vm.currentFrame().ip < len(vm.currentFrame().Instructions())-1 {
-		vm.currentFrame().ip++
+	// Cache current frame to avoid repeated function calls
+	frame := vm.frames[vm.framesIndex-1]
+	frameIns := frame.Instructions()
 
-		ip = vm.currentFrame().ip
-		ins = vm.currentFrame().Instructions()
+	for frame.ip < len(frameIns)-1 {
+		frame.ip++
+		ip = frame.ip
+		ins = frameIns
 		op = code.Opcode(ins[ip])
 
 		switch op {
 		case code.OpConstant:
 			constIndex := code.ReadUint16(ins[ip+1:])
-			vm.currentFrame().ip += 2
-			err := vm.push(vm.constants[constIndex])
+			frame.ip += 2
+			// Inline push
+			vm.stack[vm.sp] = vm.constants[constIndex]
+			vm.sp++
+
+		case code.OpAdd:
+			// Inline pop twice
+			vm.sp -= 2
+			left := vm.stack[vm.sp]
+			right := vm.stack[vm.sp+1]
+
+			// Fast path for integers
+			if leftInt, ok := left.(*object.Integer); ok {
+				if rightInt, ok := right.(*object.Integer); ok {
+					result := leftInt.Value + rightInt.Value
+					vm.stack[vm.sp] = object.GetCachedInteger(result)
+					vm.sp++
+					continue
+				}
+			}
+
+			// Fall back to general binary operation
+			err := vm.executeBinaryOperationInline(code.OpAdd, left, right)
 			if err != nil {
 				return err
 			}
 
-		case code.OpAdd, code.OpSub, code.OpMul, code.OpDiv, code.OpMod:
-			err := vm.executeBinaryOperation(op)
+		case code.OpSub:
+			vm.sp -= 2
+			left := vm.stack[vm.sp]
+			right := vm.stack[vm.sp+1]
+
+			if leftInt, ok := left.(*object.Integer); ok {
+				if rightInt, ok := right.(*object.Integer); ok {
+					result := leftInt.Value - rightInt.Value
+					vm.stack[vm.sp] = object.GetCachedInteger(result)
+					vm.sp++
+					continue
+				}
+			}
+
+			err := vm.executeBinaryOperationInline(code.OpSub, left, right)
+			if err != nil {
+				return err
+			}
+
+		case code.OpMul:
+			vm.sp -= 2
+			left := vm.stack[vm.sp]
+			right := vm.stack[vm.sp+1]
+
+			if leftInt, ok := left.(*object.Integer); ok {
+				if rightInt, ok := right.(*object.Integer); ok {
+					result := leftInt.Value * rightInt.Value
+					vm.stack[vm.sp] = object.GetCachedInteger(result)
+					vm.sp++
+					continue
+				}
+			}
+
+			err := vm.executeBinaryOperationInline(code.OpMul, left, right)
+			if err != nil {
+				return err
+			}
+
+		case code.OpDiv:
+			vm.sp -= 2
+			left := vm.stack[vm.sp]
+			right := vm.stack[vm.sp+1]
+
+			if leftInt, ok := left.(*object.Integer); ok {
+				if rightInt, ok := right.(*object.Integer); ok {
+					if rightInt.Value != 0 {
+						result := leftInt.Value / rightInt.Value
+						vm.stack[vm.sp] = object.GetCachedInteger(result)
+						vm.sp++
+						continue
+					}
+				}
+			}
+
+			err := vm.executeBinaryOperationInline(code.OpDiv, left, right)
+			if err != nil {
+				return err
+			}
+
+		case code.OpMod:
+			vm.sp -= 2
+			left := vm.stack[vm.sp]
+			right := vm.stack[vm.sp+1]
+
+			if leftInt, ok := left.(*object.Integer); ok {
+				if rightInt, ok := right.(*object.Integer); ok {
+					if rightInt.Value != 0 {
+						result := leftInt.Value % rightInt.Value
+						vm.stack[vm.sp] = object.GetCachedInteger(result)
+						vm.sp++
+						continue
+					}
+				}
+			}
+
+			err := vm.executeBinaryOperationInline(code.OpMod, left, right)
 			if err != nil {
 				return err
 			}
 
 		case code.OpPop:
-			vm.pop()
+			vm.sp--
 
 		case code.OpTrue:
-			err := vm.push(True)
-			if err != nil {
-				return err
-			}
+			vm.stack[vm.sp] = True
+			vm.sp++
 
 		case code.OpFalse:
-			err := vm.push(False)
-			if err != nil {
-				return err
-			}
+			vm.stack[vm.sp] = False
+			vm.sp++
 
 		case code.OpNull:
-			err := vm.push(Null)
+			vm.stack[vm.sp] = Null
+			vm.sp++
+
+		case code.OpEqual:
+			vm.sp -= 2
+			left := vm.stack[vm.sp]
+			right := vm.stack[vm.sp+1]
+
+			// Fast path for integers
+			if leftInt, ok := left.(*object.Integer); ok {
+				if rightInt, ok := right.(*object.Integer); ok {
+					if leftInt.Value == rightInt.Value {
+						vm.stack[vm.sp] = True
+					} else {
+						vm.stack[vm.sp] = False
+					}
+					vm.sp++
+					continue
+				}
+			}
+
+			// Fast path for strings - compare by value
+			if leftStr, ok := left.(*object.String); ok {
+				if rightStr, ok := right.(*object.String); ok {
+					if leftStr.Value == rightStr.Value {
+						vm.stack[vm.sp] = True
+					} else {
+						vm.stack[vm.sp] = False
+					}
+					vm.sp++
+					continue
+				}
+			}
+
+			// Fast path for booleans and other pointer-equal objects
+			if left == right {
+				vm.stack[vm.sp] = True
+			} else {
+				vm.stack[vm.sp] = False
+			}
+			vm.sp++
+
+		case code.OpNotEqual:
+			vm.sp -= 2
+			left := vm.stack[vm.sp]
+			right := vm.stack[vm.sp+1]
+
+			// Fast path for integers
+			if leftInt, ok := left.(*object.Integer); ok {
+				if rightInt, ok := right.(*object.Integer); ok {
+					if leftInt.Value != rightInt.Value {
+						vm.stack[vm.sp] = True
+					} else {
+						vm.stack[vm.sp] = False
+					}
+					vm.sp++
+					continue
+				}
+			}
+
+			// Fast path for strings - compare by value
+			if leftStr, ok := left.(*object.String); ok {
+				if rightStr, ok := right.(*object.String); ok {
+					if leftStr.Value != rightStr.Value {
+						vm.stack[vm.sp] = True
+					} else {
+						vm.stack[vm.sp] = False
+					}
+					vm.sp++
+					continue
+				}
+			}
+
+			if left != right {
+				vm.stack[vm.sp] = True
+			} else {
+				vm.stack[vm.sp] = False
+			}
+			vm.sp++
+
+		case code.OpGreaterThan:
+			vm.sp -= 2
+			left := vm.stack[vm.sp]
+			right := vm.stack[vm.sp+1]
+
+			if leftInt, ok := left.(*object.Integer); ok {
+				if rightInt, ok := right.(*object.Integer); ok {
+					if leftInt.Value > rightInt.Value {
+						vm.stack[vm.sp] = True
+					} else {
+						vm.stack[vm.sp] = False
+					}
+					vm.sp++
+					continue
+				}
+			}
+
+			err := vm.executeComparisonInline(code.OpGreaterThan, left, right)
 			if err != nil {
 				return err
 			}
 
-		case code.OpEqual, code.OpNotEqual, code.OpGreaterThan, code.OpGreaterThanOrEqual:
-			err := vm.executeComparison(op)
+		case code.OpGreaterThanOrEqual:
+			vm.sp -= 2
+			left := vm.stack[vm.sp]
+			right := vm.stack[vm.sp+1]
+
+			if leftInt, ok := left.(*object.Integer); ok {
+				if rightInt, ok := right.(*object.Integer); ok {
+					if leftInt.Value >= rightInt.Value {
+						vm.stack[vm.sp] = True
+					} else {
+						vm.stack[vm.sp] = False
+					}
+					vm.sp++
+					continue
+				}
+			}
+
+			err := vm.executeComparisonInline(code.OpGreaterThanOrEqual, left, right)
 			if err != nil {
 				return err
 			}
 
 		case code.OpAnd:
-			right := vm.pop()
-			left := vm.pop()
-			leftVal := isTruthy(left)
-			rightVal := isTruthy(right)
-			if leftVal && rightVal {
-				vm.push(True)
+			vm.sp -= 2
+			left := vm.stack[vm.sp]
+			right := vm.stack[vm.sp+1]
+			if isTruthy(left) && isTruthy(right) {
+				vm.stack[vm.sp] = True
 			} else {
-				vm.push(False)
+				vm.stack[vm.sp] = False
 			}
+			vm.sp++
 
 		case code.OpOr:
-			right := vm.pop()
-			left := vm.pop()
-			leftVal := isTruthy(left)
-			rightVal := isTruthy(right)
-			if leftVal || rightVal {
-				vm.push(True)
+			vm.sp -= 2
+			left := vm.stack[vm.sp]
+			right := vm.stack[vm.sp+1]
+			if isTruthy(left) || isTruthy(right) {
+				vm.stack[vm.sp] = True
 			} else {
-				vm.push(False)
+				vm.stack[vm.sp] = False
 			}
+			vm.sp++
 
 		case code.OpBang:
-			err := vm.executeBangOperator()
-			if err != nil {
-				return err
+			operand := vm.stack[vm.sp-1]
+			switch operand {
+			case True:
+				vm.stack[vm.sp-1] = False
+			case False:
+				vm.stack[vm.sp-1] = True
+			case Null:
+				vm.stack[vm.sp-1] = True
+			default:
+				vm.stack[vm.sp-1] = False
 			}
 
 		case code.OpMinus:
-			err := vm.executeMinusOperator()
-			if err != nil {
-				return err
+			operand := vm.stack[vm.sp-1]
+			switch obj := operand.(type) {
+			case *object.Integer:
+				vm.stack[vm.sp-1] = object.GetCachedInteger(-obj.Value)
+			case *object.Float:
+				vm.stack[vm.sp-1] = &object.Float{Value: -obj.Value}
+			default:
+				return fmt.Errorf("unsupported type for negation: %s", operand.Type())
 			}
 
 		case code.OpJump:
 			pos := int(code.ReadUint16(ins[ip+1:]))
-			vm.currentFrame().ip = pos - 1
+			frame.ip = pos - 1
 
 		case code.OpJumpNotTruthy:
 			pos := int(code.ReadUint16(ins[ip+1:]))
-			vm.currentFrame().ip += 2
+			frame.ip += 2
 
-			condition := vm.pop()
+			condition := vm.stack[vm.sp-1]
+			vm.sp--
 			if !isTruthy(condition) {
-				vm.currentFrame().ip = pos - 1
+				frame.ip = pos - 1
 			}
 
 		case code.OpSetGlobal:
 			globalIndex := code.ReadUint16(ins[ip+1:])
-			vm.currentFrame().ip += 2
-			value := vm.pop()
+			frame.ip += 2
+			vm.sp--
 			vm.globalsMu.Lock()
-			vm.globals[globalIndex] = value
+			vm.globals[globalIndex] = vm.stack[vm.sp]
 			vm.globalsMu.Unlock()
 
 		case code.OpGetGlobal:
 			globalIndex := code.ReadUint16(ins[ip+1:])
-			vm.currentFrame().ip += 2
+			frame.ip += 2
 			vm.globalsMu.RLock()
-			value := vm.globals[globalIndex]
+			vm.stack[vm.sp] = vm.globals[globalIndex]
 			vm.globalsMu.RUnlock()
-			err := vm.push(value)
-			if err != nil {
-				return err
-			}
+			vm.sp++
 
 		case code.OpSetLocal:
 			localIndex := code.ReadUint8(ins[ip+1:])
-			vm.currentFrame().ip += 1
-			frame := vm.currentFrame()
-			vm.stack[frame.basePointer+int(localIndex)] = vm.pop()
+			frame.ip += 1
+			vm.sp--
+			vm.stack[frame.basePointer+int(localIndex)] = vm.stack[vm.sp]
 
 		case code.OpGetLocal:
 			localIndex := code.ReadUint8(ins[ip+1:])
-			vm.currentFrame().ip += 1
-			frame := vm.currentFrame()
-			err := vm.push(vm.stack[frame.basePointer+int(localIndex)])
-			if err != nil {
-				return err
-			}
+			frame.ip += 1
+			vm.stack[vm.sp] = vm.stack[frame.basePointer+int(localIndex)]
+			vm.sp++
 
 		case code.OpArray:
 			numElements := int(code.ReadUint16(ins[ip+1:]))
-			vm.currentFrame().ip += 2
+			frame.ip += 2
 
 			array := vm.buildArray(vm.sp-numElements, vm.sp)
 			vm.sp = vm.sp - numElements
-
-			err := vm.push(array)
-			if err != nil {
-				return err
-			}
+			vm.stack[vm.sp] = array
+			vm.sp++
 
 		case code.OpHash:
 			numElements := int(code.ReadUint16(ins[ip+1:]))
-			vm.currentFrame().ip += 2
+			frame.ip += 2
 
 			hash, err := vm.buildHash(vm.sp-numElements, vm.sp)
 			if err != nil {
 				return err
 			}
 			vm.sp = vm.sp - numElements
-
-			err = vm.push(hash)
-			if err != nil {
-				return err
-			}
+			vm.stack[vm.sp] = hash
+			vm.sp++
 
 		case code.OpPHPArray:
 			numElements := int(code.ReadUint16(ins[ip+1:]))
-			vm.currentFrame().ip += 2
+			frame.ip += 2
 
 			phpArray, err := vm.buildPHPArray(vm.sp-numElements*2, vm.sp, numElements)
 			if err != nil {
 				return err
 			}
 			vm.sp = vm.sp - numElements*2
-
-			err = vm.push(phpArray)
-			if err != nil {
-				return err
-			}
+			vm.stack[vm.sp] = phpArray
+			vm.sp++
 
 		case code.OpIndex:
-			index := vm.pop()
-			left := vm.pop()
+			vm.sp -= 2
+			left := vm.stack[vm.sp]
+			index := vm.stack[vm.sp+1]
 
 			err := vm.executeIndexExpression(left, index)
 			if err != nil {
@@ -286,65 +505,263 @@ func (vm *VM) Run() error {
 
 		case code.OpCall:
 			numArgs := code.ReadUint8(ins[ip+1:])
-			vm.currentFrame().ip += 1
+			frame.ip += 1
 
 			err := vm.executeCall(int(numArgs))
 			if err != nil {
 				return err
 			}
+			// Update frame reference after call
+			frame = vm.frames[vm.framesIndex-1]
+			frameIns = frame.Instructions()
+
+		case code.OpClass:
+			constIndex := code.ReadUint16(ins[ip+1:])
+			frame.ip += 2
+			// Class is already in constants, just push it
+			vm.stack[vm.sp] = vm.constants[constIndex]
+			vm.sp++
+
+		case code.OpInstantiate:
+			numArgs := int(code.ReadUint8(ins[ip+1:]))
+			frame.ip += 1
+
+			class := vm.stack[vm.sp-1-numArgs]
+			classObj, ok := class.(*object.Class)
+			if !ok {
+				return fmt.Errorf("not a class: %s", class.Type())
+			}
+
+			// Create instance
+			instance := &object.Instance{
+				Class:  classObj,
+				Fields: make(map[string]object.Object),
+			}
+
+			// Initialize properties with arguments or null
+			args := vm.stack[vm.sp-numArgs : vm.sp]
+			for i, propName := range classObj.Properties {
+				if i < len(args) {
+					instance.Fields[propName] = args[i]
+				} else {
+					instance.Fields[propName] = Null
+				}
+			}
+
+			vm.sp = vm.sp - numArgs - 1
+			vm.stack[vm.sp] = instance
+			vm.sp++
+
+		case code.OpGetProperty:
+			propName := vm.stack[vm.sp-1]
+			vm.sp--
+			instance := vm.stack[vm.sp-1]
+			vm.sp--
+
+			instanceObj, ok := instance.(*object.Instance)
+			if !ok {
+				// Not an instance - try to fallback to index operation
+				// This handles cases like arr.property where property is a string
+				// For arrays, we can't use string as index, so return error
+				// But for hashes, we can use string as key
+				if hash, ok := instance.(*object.Hash); ok {
+					// Try to use as hash key
+					key, ok := propName.(object.Hashable)
+					if !ok {
+						return fmt.Errorf("only instances have properties, got %s", instance.Type())
+					}
+					pair, ok := hash.Pairs[key.HashKey()]
+					if !ok {
+						vm.stack[vm.sp] = Null
+						vm.sp++
+						continue
+					}
+					vm.stack[vm.sp] = pair.Value
+					vm.sp++
+					continue
+				}
+				return fmt.Errorf("only instances have properties, got %s", instance.Type())
+			}
+
+			propNameStr, ok := propName.(*object.String)
+			if !ok {
+				return fmt.Errorf("property name must be string, got %s", propName.Type())
+			}
+
+			// Check if it's a method (search in current class and parent classes)
+			method := findMethod(instanceObj.Class, propNameStr.Value)
+			if method != nil {
+				// Return a bound method (closure with instance as first free variable)
+				closure := &object.Closure{
+					Fn:   method,
+					Free: []object.Object{instanceObj},
+				}
+				vm.stack[vm.sp] = closure
+				vm.sp++
+				continue
+			}
+
+			// Check if it's a field
+			if field, ok := instanceObj.Fields[propNameStr.Value]; ok {
+				vm.stack[vm.sp] = field
+				vm.sp++
+				continue
+			}
+
+			// Property doesn't exist
+			vm.stack[vm.sp] = Null
+			vm.sp++
+
+		case code.OpSetProperty:
+			value := vm.stack[vm.sp-1]
+			vm.sp--
+			propName := vm.stack[vm.sp-1]
+			vm.sp--
+			instance := vm.stack[vm.sp-1]
+			vm.sp--
+
+			instanceObj, ok := instance.(*object.Instance)
+			if !ok {
+				return fmt.Errorf("only instances have properties, got %s", instance.Type())
+			}
+
+			propNameStr, ok := propName.(*object.String)
+			if !ok {
+				return fmt.Errorf("property name must be string, got %s", propName.Type())
+			}
+
+			instanceObj.Fields[propNameStr.Value] = value
+			// Push the assigned value back
+			vm.stack[vm.sp] = value
+			vm.sp++
+
+		case code.OpGetMethod:
+			methodNameIndex := code.ReadUint16(ins[ip+1:])
+			frame.ip += 2
+
+			methodName := vm.constants[methodNameIndex].(*object.String)
+			instance := vm.stack[vm.sp-1]
+			vm.sp--
+
+			instanceObj, ok := instance.(*object.Instance)
+			if !ok {
+				return fmt.Errorf("only instances have methods, got %s", instance.Type())
+			}
+
+			// Search for method in class hierarchy
+			method := findMethod(instanceObj.Class, methodName.Value)
+			if method == nil {
+				vm.stack[vm.sp] = Null
+				vm.sp++
+				continue
+			}
+
+			// Create bound method (closure with instance as first free variable)
+			closure := &object.Closure{
+				Fn:   method,
+				Free: []object.Object{instanceObj},
+			}
+			vm.stack[vm.sp] = closure
+			vm.sp++
+
+		case code.OpCallMethod:
+			numArgs := int(code.ReadUint8(ins[ip+1:]))
+			frame.ip += 1
+
+			method := vm.stack[vm.sp-1-numArgs]
+			closure, ok := method.(*object.Closure)
+			if !ok {
+				return fmt.Errorf("calling non-method: %s", method.Type())
+			}
+
+			// Get instance from free variables (first free var is 'this')
+			if len(closure.Free) == 0 {
+				return fmt.Errorf("method has no bound instance")
+			}
+			instance := closure.Free[0]
+
+			// Push instance as first argument (this)
+			args := vm.stack[vm.sp-numArgs : vm.sp]
+			vm.sp = vm.sp - numArgs - 1
+
+			// Create new closure with instance bound
+			boundClosure := &object.Closure{
+				Fn:   closure.Fn,
+				Free: []object.Object{instance},
+			}
+
+			// Push bound closure and arguments
+			vm.stack[vm.sp] = boundClosure
+			vm.sp++
+			for _, arg := range args {
+				vm.stack[vm.sp] = arg
+				vm.sp++
+			}
+
+			// Call the method
+			err := vm.callClosure(boundClosure, numArgs+1) // +1 for 'this'
+			if err != nil {
+				return err
+			}
+			// Update frame reference after call
+			frame = vm.frames[vm.framesIndex-1]
+			frameIns = frame.Instructions()
+
+		case code.OpThis:
+			// Get 'this' from the first local variable (which is 'this' parameter)
+			if frame.basePointer >= 0 && frame.basePointer < len(vm.stack) {
+				// 'this' is the first local variable (at basePointer)
+				vm.stack[vm.sp] = vm.stack[frame.basePointer]
+				vm.sp++
+			} else {
+				return fmt.Errorf("'this' is not available in this context")
+			}
 
 		case code.OpReturnValue:
-			returnValue := vm.pop()
+			returnValue := vm.stack[vm.sp-1]
+			vm.sp--
 
 			vm.framesIndex--
 			// Check if we're returning from the top-level frame (e.g., spawned closure)
 			if vm.framesIndex == 0 {
-				err := vm.push(returnValue)
-				if err != nil {
-					return err
-				}
+				vm.stack[vm.sp] = returnValue
+				vm.sp++
 				return nil
 			}
-			frame := vm.frames[vm.framesIndex]
-			vm.sp = frame.basePointer - 1
+			frame = vm.frames[vm.framesIndex-1]
+			vm.sp = vm.frames[vm.framesIndex].basePointer - 1
+			frameIns = frame.Instructions()
 
-			err := vm.push(returnValue)
-			if err != nil {
-				return err
-			}
+			vm.stack[vm.sp] = returnValue
+			vm.sp++
 
 		case code.OpReturn:
 			vm.framesIndex--
 			// Check if we're returning from the top-level frame (e.g., spawned closure)
 			if vm.framesIndex == 0 {
-				err := vm.push(Null)
-				if err != nil {
-					return err
-				}
+				vm.stack[vm.sp] = Null
+				vm.sp++
 				return nil
 			}
-			frame := vm.frames[vm.framesIndex]
-			vm.sp = frame.basePointer - 1
+			frame = vm.frames[vm.framesIndex-1]
+			vm.sp = vm.frames[vm.framesIndex].basePointer - 1
+			frameIns = frame.Instructions()
 
-			err := vm.push(Null)
-			if err != nil {
-				return err
-			}
+			vm.stack[vm.sp] = Null
+			vm.sp++
 
 		case code.OpGetBuiltin:
 			builtinIndex := code.ReadUint8(ins[ip+1:])
-			vm.currentFrame().ip += 1
+			frame.ip += 1
 
 			definition := object.Builtins[builtinIndex]
-			err := vm.push(&object.Builtin{Name: definition.Name, Fn: definition.Fn})
-			if err != nil {
-				return err
-			}
+			vm.stack[vm.sp] = &object.Builtin{Name: definition.Name, Fn: definition.Fn}
+			vm.sp++
 
 		case code.OpClosure:
 			constIndex := code.ReadUint16(ins[ip+1:])
 			numFree := code.ReadUint8(ins[ip+3:])
-			vm.currentFrame().ip += 3
+			frame.ip += 3
 
 			err := vm.pushClosure(int(constIndex), int(numFree))
 			if err != nil {
@@ -353,39 +770,33 @@ func (vm *VM) Run() error {
 
 		case code.OpGetFree:
 			freeIndex := code.ReadUint8(ins[ip+1:])
-			vm.currentFrame().ip += 1
+			frame.ip += 1
 
-			currentClosure := vm.currentFrame().cl
-			err := vm.push(currentClosure.Free[freeIndex])
-			if err != nil {
-				return err
-			}
+			currentClosure := frame.cl
+			vm.stack[vm.sp] = currentClosure.Free[freeIndex]
+			vm.sp++
 
 		case code.OpCurrentClosure:
-			currentClosure := vm.currentFrame().cl
-			err := vm.push(currentClosure)
-			if err != nil {
-				return err
-			}
+			currentClosure := frame.cl
+			vm.stack[vm.sp] = currentClosure
+			vm.sp++
 
 		case code.OpSpawn:
-			fn := vm.pop()
+			fn := vm.stack[vm.sp-1]
+			vm.sp--
 			go vm.executeSpawn(fn)
 			// Push null so that expression statement pop works
-			err := vm.push(Null)
-			if err != nil {
-				return err
-			}
+			vm.stack[vm.sp] = Null
+			vm.sp++
 
 		case code.OpChannel:
 			channel := &object.Channel{Chan: make(chan object.Object)}
-			err := vm.push(channel)
-			if err != nil {
-				return err
-			}
+			vm.stack[vm.sp] = channel
+			vm.sp++
 
 		case code.OpChannelBuffered:
-			sizeObj := vm.pop()
+			vm.sp--
+			sizeObj := vm.stack[vm.sp]
 			sizeInt, ok := sizeObj.(*object.Integer)
 			if !ok {
 				return fmt.Errorf("channel buffer size must be integer, got %s", sizeObj.Type())
@@ -394,27 +805,25 @@ func (vm *VM) Run() error {
 				return fmt.Errorf("channel buffer size must be non-negative, got %d", sizeInt.Value)
 			}
 			channel := &object.Channel{Chan: make(chan object.Object, sizeInt.Value)}
-			err := vm.push(channel)
-			if err != nil {
-				return err
-			}
+			vm.stack[vm.sp] = channel
+			vm.sp++
 
 		case code.OpSend:
-			value := vm.pop()
-			channel := vm.pop()
+			vm.sp -= 2
+			channel := vm.stack[vm.sp]
+			value := vm.stack[vm.sp+1]
 			ch, ok := channel.(*object.Channel)
 			if !ok {
 				return fmt.Errorf("cannot send to non-channel")
 			}
 			// Blocking send - no goroutine wrapper
 			ch.Chan <- value
-			err := vm.push(Null)
-			if err != nil {
-				return err
-			}
+			vm.stack[vm.sp] = Null
+			vm.sp++
 
 		case code.OpReceive:
-			channel := vm.pop()
+			vm.sp--
+			channel := vm.stack[vm.sp]
 			ch, ok := channel.(*object.Channel)
 			if !ok {
 				return fmt.Errorf("cannot receive from non-channel")
@@ -422,28 +831,22 @@ func (vm *VM) Run() error {
 			value, ok := <-ch.Chan
 			if !ok {
 				// Channel is closed
-				err := vm.push(Null)
-				if err != nil {
-					return err
-				}
+				vm.stack[vm.sp] = Null
 			} else {
-				err := vm.push(value)
-				if err != nil {
-					return err
-				}
+				vm.stack[vm.sp] = value
 			}
+			vm.sp++
 
 		case code.OpCloseChannel:
-			channel := vm.pop()
+			vm.sp--
+			channel := vm.stack[vm.sp]
 			ch, ok := channel.(*object.Channel)
 			if !ok {
 				return fmt.Errorf("cannot close non-channel")
 			}
 			close(ch.Chan)
-			err := vm.push(Null)
-			if err != nil {
-				return err
-			}
+			vm.stack[vm.sp] = Null
+			vm.sp++
 
 		case code.OpBreak:
 			return &BreakSignal{}
@@ -452,9 +855,10 @@ func (vm *VM) Run() error {
 			return &ContinueSignal{}
 
 		case code.OpSetIndex:
-			value := vm.pop()
-			index := vm.pop()
-			left := vm.pop()
+			vm.sp -= 3
+			left := vm.stack[vm.sp]
+			index := vm.stack[vm.sp+1]
+			value := vm.stack[vm.sp+2]
 
 			err := vm.executeSetIndex(left, index, value)
 			if err != nil {
@@ -462,8 +866,9 @@ func (vm *VM) Run() error {
 			}
 
 		case code.OpArrayPush:
-			value := vm.pop()
-			arr := vm.pop()
+			vm.sp -= 2
+			arr := vm.stack[vm.sp]
+			value := vm.stack[vm.sp+1]
 
 			err := vm.executeArrayPush(arr, value)
 			if err != nil {
@@ -471,9 +876,10 @@ func (vm *VM) Run() error {
 			}
 
 		case code.OpSlice:
-			end := vm.pop()
-			start := vm.pop()
-			arr := vm.pop()
+			vm.sp -= 3
+			arr := vm.stack[vm.sp]
+			start := vm.stack[vm.sp+1]
+			end := vm.stack[vm.sp+2]
 
 			err := vm.executeSlice(arr, start, end)
 			if err != nil {
@@ -481,8 +887,9 @@ func (vm *VM) Run() error {
 			}
 
 		case code.OpArrayMap:
-			fn := vm.pop()
-			arr := vm.pop()
+			vm.sp -= 2
+			arr := vm.stack[vm.sp]
+			fn := vm.stack[vm.sp+1]
 
 			err := vm.executeArrayMap(arr, fn)
 			if err != nil {
@@ -490,8 +897,9 @@ func (vm *VM) Run() error {
 			}
 
 		case code.OpArrayFilter:
-			fn := vm.pop()
-			arr := vm.pop()
+			vm.sp -= 2
+			arr := vm.stack[vm.sp]
+			fn := vm.stack[vm.sp+1]
 
 			err := vm.executeArrayFilter(arr, fn)
 			if err != nil {
@@ -503,69 +911,54 @@ func (vm *VM) Run() error {
 	return nil
 }
 
-func (vm *VM) push(o object.Object) error {
-	if vm.sp >= StackSize {
-		return fmt.Errorf("stack overflow")
-	}
-
-	vm.stack[vm.sp] = o
-	vm.sp++
-
-	return nil
-}
-
-func (vm *VM) pop() object.Object {
-	o := vm.stack[vm.sp-1]
-	vm.sp--
-	return o
-}
-
-func (vm *VM) executeBinaryOperation(op code.Opcode) error {
-	right := vm.pop()
-	left := vm.pop()
-
+// executeBinaryOperationInline handles binary operations with optimizations
+func (vm *VM) executeBinaryOperationInline(op code.Opcode, left, right object.Object) error {
 	leftType := left.Type()
 	rightType := right.Type()
 
 	switch {
 	case leftType == object.INTEGER_OBJ && rightType == object.INTEGER_OBJ:
-		return vm.executeBinaryIntegerOperation(op, left, right)
+		return vm.executeBinaryIntegerOperationInline(op, left.(*object.Integer), right.(*object.Integer))
 	case leftType == object.FLOAT_OBJ || rightType == object.FLOAT_OBJ:
-		return vm.executeBinaryFloatOperation(op, left, right)
+		return vm.executeBinaryFloatOperationInline(op, left, right)
 	case leftType == object.STRING_OBJ && rightType == object.STRING_OBJ:
-		return vm.executeBinaryStringOperation(op, left, right)
+		if op == code.OpAdd {
+			leftVal := left.(*object.String).Value
+			rightVal := right.(*object.String).Value
+			vm.stack[vm.sp] = &object.String{Value: leftVal + rightVal}
+			vm.sp++
+			return nil
+		}
+		return fmt.Errorf("unknown string operator: %d", op)
 	default:
-		return fmt.Errorf("unsupported types for binary operation: %s %s",
-			leftType, rightType)
+		return fmt.Errorf("unsupported types for binary operation: %s %s", leftType, rightType)
 	}
 }
 
-func (vm *VM) executeBinaryIntegerOperation(op code.Opcode, left, right object.Object) error {
-	leftValue := left.(*object.Integer).Value
-	rightValue := right.(*object.Integer).Value
-
+func (vm *VM) executeBinaryIntegerOperationInline(op code.Opcode, left, right *object.Integer) error {
 	var result int64
 
 	switch op {
 	case code.OpAdd:
-		result = leftValue + rightValue
+		result = left.Value + right.Value
 	case code.OpSub:
-		result = leftValue - rightValue
+		result = left.Value - right.Value
 	case code.OpMul:
-		result = leftValue * rightValue
+		result = left.Value * right.Value
 	case code.OpDiv:
-		result = leftValue / rightValue
+		result = left.Value / right.Value
 	case code.OpMod:
-		result = leftValue % rightValue
+		result = left.Value % right.Value
 	default:
 		return fmt.Errorf("unknown integer operator: %d", op)
 	}
 
-	// Use cached integer for common values to reduce GC pressure
-	return vm.push(object.GetCachedInteger(result))
+	vm.stack[vm.sp] = object.GetCachedInteger(result)
+	vm.sp++
+	return nil
 }
 
-func (vm *VM) executeBinaryFloatOperation(op code.Opcode, left, right object.Object) error {
+func (vm *VM) executeBinaryFloatOperationInline(op code.Opcode, left, right object.Object) error {
 	var leftValue, rightValue float64
 
 	switch l := left.(type) {
@@ -597,152 +990,57 @@ func (vm *VM) executeBinaryFloatOperation(op code.Opcode, left, right object.Obj
 		return fmt.Errorf("unknown float operator: %d", op)
 	}
 
-	return vm.push(&object.Float{Value: result})
+	vm.stack[vm.sp] = &object.Float{Value: result}
+	vm.sp++
+	return nil
 }
 
-func (vm *VM) executeBinaryStringOperation(op code.Opcode, left, right object.Object) error {
-	if op != code.OpAdd {
-		return fmt.Errorf("unknown string operator: %d", op)
-	}
-
-	leftValue := left.(*object.String).Value
-	rightValue := right.(*object.String).Value
-
-	return vm.push(&object.String{Value: leftValue + rightValue})
-}
-
-func (vm *VM) executeComparison(op code.Opcode) error {
-	right := vm.pop()
-	left := vm.pop()
-
-	// Fail fast: only OpEqual and OpNotEqual supported for non-numeric types
-	if op != code.OpEqual && op != code.OpNotEqual {
-		if left.Type() != object.INTEGER_OBJ && left.Type() != object.FLOAT_OBJ {
-			return fmt.Errorf("unknown operator: %d (%s %s)", op, left.Type(), right.Type())
-		}
-	}
-
-	if left.Type() == object.INTEGER_OBJ && right.Type() == object.INTEGER_OBJ {
-		return vm.executeIntegerComparison(op, left, right)
-	}
-
+func (vm *VM) executeComparisonInline(op code.Opcode, left, right object.Object) error {
 	if left.Type() == object.FLOAT_OBJ || right.Type() == object.FLOAT_OBJ {
-		return vm.executeFloatComparison(op, left, right)
-	}
+		var leftValue, rightValue float64
 
-	// String comparison by value
-	if left.Type() == object.STRING_OBJ && right.Type() == object.STRING_OBJ {
-		leftStr := left.(*object.String).Value
-		rightStr := right.(*object.String).Value
-		if op == code.OpEqual {
-			return vm.push(nativeBoolToBooleanObject(leftStr == rightStr))
+		switch l := left.(type) {
+		case *object.Float:
+			leftValue = l.Value
+		case *object.Integer:
+			leftValue = float64(l.Value)
 		}
-		return vm.push(nativeBoolToBooleanObject(leftStr != rightStr))
+
+		switch r := right.(type) {
+		case *object.Float:
+			rightValue = r.Value
+		case *object.Integer:
+			rightValue = float64(r.Value)
+		}
+
+		var result bool
+		switch op {
+		case code.OpGreaterThan:
+			result = leftValue > rightValue
+		case code.OpGreaterThanOrEqual:
+			result = leftValue >= rightValue
+		}
+
+		if result {
+			vm.stack[vm.sp] = True
+		} else {
+			vm.stack[vm.sp] = False
+		}
+		vm.sp++
+		return nil
 	}
 
-	// Pointer comparison for other types (booleans, nulls, etc.)
-	if op == code.OpEqual {
-		return vm.push(nativeBoolToBooleanObject(right == left))
-	}
-	return vm.push(nativeBoolToBooleanObject(right != left))
-}
-
-func (vm *VM) executeIntegerComparison(op code.Opcode, left, right object.Object) error {
-	leftValue := left.(*object.Integer).Value
-	rightValue := right.(*object.Integer).Value
-
-	switch op {
-	case code.OpEqual:
-		return vm.push(nativeBoolToBooleanObject(rightValue == leftValue))
-	case code.OpNotEqual:
-		return vm.push(nativeBoolToBooleanObject(rightValue != leftValue))
-	case code.OpGreaterThan:
-		return vm.push(nativeBoolToBooleanObject(leftValue > rightValue))
-	case code.OpGreaterThanOrEqual:
-		return vm.push(nativeBoolToBooleanObject(leftValue >= rightValue))
-	default:
-		return fmt.Errorf("unknown operator: %d", op)
-	}
-}
-
-func (vm *VM) executeFloatComparison(op code.Opcode, left, right object.Object) error {
-	var leftValue, rightValue float64
-
-	switch l := left.(type) {
-	case *object.Float:
-		leftValue = l.Value
-	case *object.Integer:
-		leftValue = float64(l.Value)
-	}
-
-	switch r := right.(type) {
-	case *object.Float:
-		rightValue = r.Value
-	case *object.Integer:
-		rightValue = float64(r.Value)
-	}
-
-	switch op {
-	case code.OpEqual:
-		return vm.push(nativeBoolToBooleanObject(rightValue == leftValue))
-	case code.OpNotEqual:
-		return vm.push(nativeBoolToBooleanObject(rightValue != leftValue))
-	case code.OpGreaterThan:
-		return vm.push(nativeBoolToBooleanObject(leftValue > rightValue))
-	case code.OpGreaterThanOrEqual:
-		return vm.push(nativeBoolToBooleanObject(leftValue >= rightValue))
-	default:
-		return fmt.Errorf("unknown operator: %d", op)
-	}
-}
-
-func nativeBoolToBooleanObject(input bool) *object.Boolean {
-	if input {
-		return True
-	}
-	return False
-}
-
-func (vm *VM) executeBangOperator() error {
-	operand := vm.pop()
-
-	switch operand {
-	case True:
-		return vm.push(False)
-	case False:
-		return vm.push(True)
-	case Null:
-		return vm.push(True)
-	default:
-		return vm.push(False)
-	}
-}
-
-func (vm *VM) executeMinusOperator() error {
-	operand := vm.pop()
-
-	switch obj := operand.(type) {
-	case *object.Integer:
-		return vm.push(&object.Integer{Value: -obj.Value})
-	case *object.Float:
-		return vm.push(&object.Float{Value: -obj.Value})
-	default:
-		return fmt.Errorf("unsupported type for negation: %s", operand.Type())
-	}
+	return fmt.Errorf("unknown operator: %d (%s %s)", op, left.Type(), right.Type())
 }
 
 func (vm *VM) buildArray(startIndex, endIndex int) object.Object {
 	elements := make([]object.Object, endIndex-startIndex)
-
-	for i := startIndex; i < endIndex; i++ {
-		elements[i-startIndex] = vm.stack[i]
-	}
-
+	copy(elements, vm.stack[startIndex:endIndex])
 	return &object.Array{Elements: elements}
 }
 
 func (vm *VM) buildHash(startIndex, endIndex int) (object.Object, error) {
-	hashedPairs := make(map[object.HashKey]object.HashPair)
+	hashedPairs := make(map[object.HashKey]object.HashPair, (endIndex-startIndex)/2)
 
 	for i := startIndex; i < endIndex; i += 2 {
 		key := vm.stack[i]
@@ -785,64 +1083,144 @@ func (vm *VM) executeIndexExpression(left, index object.Object) error {
 	if errObj, ok := left.(*object.Error); ok {
 		return fmt.Errorf("cannot index error object: %s", errObj.Message)
 	}
-	
+
+	// Fast path for arrays with integer index
+	if arr, ok := left.(*object.Array); ok {
+		if idx, ok := index.(*object.Integer); ok {
+			i := idx.Value
+			if i >= 0 && i < int64(len(arr.Elements)) {
+				vm.stack[vm.sp] = arr.Elements[i]
+				vm.sp++
+				return nil
+			}
+			vm.stack[vm.sp] = Null
+			vm.sp++
+			return nil
+		}
+	}
+
 	if phpArray, ok := left.(*object.PHPArray); ok {
 		value, ok := phpArray.Get(index)
 		if !ok {
-			return vm.push(Null)
+			vm.stack[vm.sp] = Null
+			vm.sp++
+			return nil
 		}
-		return vm.push(value)
+		vm.stack[vm.sp] = value
+		vm.sp++
+		return nil
 	}
+
 	switch {
 	case left.Type() == object.ARRAY_OBJ && index.Type() == object.INTEGER_OBJ:
-		return vm.executeArrayIndex(left, index)
+		arrayObject := left.(*object.Array)
+		i := index.(*object.Integer).Value
+		max := int64(len(arrayObject.Elements) - 1)
+
+		if i < 0 || i > max {
+			vm.stack[vm.sp] = Null
+			vm.sp++
+			return nil
+		}
+
+		vm.stack[vm.sp] = arrayObject.Elements[i]
+		vm.sp++
+		return nil
+
 	case left.Type() == object.HASH_OBJ:
-		return vm.executeHashIndex(left, index)
+		hashObject := left.(*object.Hash)
+
+		key, ok := index.(object.Hashable)
+		if !ok {
+			return fmt.Errorf("unusable as hash key: %s", index.Type())
+		}
+
+		pair, ok := hashObject.Pairs[key.HashKey()]
+		if !ok {
+			vm.stack[vm.sp] = Null
+			vm.sp++
+			return nil
+		}
+
+		vm.stack[vm.sp] = pair.Value
+		vm.sp++
+		return nil
+
 	case left.Type() == object.STRING_OBJ && index.Type() == object.INTEGER_OBJ:
-		return vm.executeStringIndex(left, index)
+		strObject := left.(*object.String)
+		i := index.(*object.Integer).Value
+		max := int64(len(strObject.Value) - 1)
+
+		if i < 0 || i > max {
+			vm.stack[vm.sp] = Null
+			vm.sp++
+			return nil
+		}
+
+		vm.stack[vm.sp] = &object.String{Value: string(strObject.Value[i])}
+		vm.sp++
+		return nil
+
+	case left.Type() == object.INSTANCE_OBJ:
+		return vm.executeInstanceProperty(left, index)
+
 	default:
 		return fmt.Errorf("index operator not supported: %s", left.Type())
 	}
 }
 
-func (vm *VM) executeArrayIndex(array, index object.Object) error {
-	arrayObject := array.(*object.Array)
-	i := index.(*object.Integer).Value
-	max := int64(len(arrayObject.Elements) - 1)
+func (vm *VM) executeInstanceProperty(instance, prop object.Object) error {
+	instanceObj := instance.(*object.Instance)
 
-	if i < 0 || i > max {
-		return vm.push(Null)
+	// Property name must be a string
+	propName, ok := prop.(*object.String)
+	if !ok {
+		return fmt.Errorf("property name must be string, got %s", prop.Type())
 	}
 
-	return vm.push(arrayObject.Elements[i])
+	// Check if it's a method (search in class hierarchy)
+	method := findMethod(instanceObj.Class, propName.Value)
+	if method != nil {
+		// Return a bound method (closure with instance as first free variable)
+		closure := &object.Closure{
+			Fn:   method,
+			Free: []object.Object{instanceObj},
+		}
+		vm.stack[vm.sp] = closure
+		vm.sp++
+		return nil
+	}
+
+	// Check if it's a field
+	if field, ok := instanceObj.Fields[propName.Value]; ok {
+		vm.stack[vm.sp] = field
+		vm.sp++
+		return nil
+	}
+
+	// Property doesn't exist
+	vm.stack[vm.sp] = Null
+	vm.sp++
+	return nil
 }
 
-func (vm *VM) executeHashIndex(hash, index object.Object) error {
-	hashObject := hash.(*object.Hash)
-
-	key, ok := index.(object.Hashable)
-	if !ok {
-		return fmt.Errorf("unusable as hash key: %s", index.Type())
+// findMethod searches for a method in the class hierarchy
+func findMethod(class *object.Class, methodName string) *object.CompiledFunction {
+	// Search in current class
+	if method, ok := class.Methods[methodName]; ok {
+		return method
 	}
 
-	pair, ok := hashObject.Pairs[key.HashKey()]
-	if !ok {
-		return vm.push(Null)
+	// Search in parent classes
+	current := class
+	for current.Parent != nil {
+		current = current.Parent
+		if method, ok := current.Methods[methodName]; ok {
+			return method
+		}
 	}
 
-	return vm.push(pair.Value)
-}
-
-func (vm *VM) executeStringIndex(str, index object.Object) error {
-	strObject := str.(*object.String)
-	i := index.(*object.Integer).Value
-	max := int64(len(strObject.Value) - 1)
-
-	if i < 0 || i > max {
-		return vm.push(Null)
-	}
-
-	return vm.push(&object.String{Value: string(strObject.Value[i])})
+	return nil
 }
 
 func (vm *VM) executeCall(numArgs int) error {
@@ -852,9 +1230,69 @@ func (vm *VM) executeCall(numArgs int) error {
 		return vm.callClosure(callee, numArgs)
 	case *object.Builtin:
 		return vm.callBuiltin(callee, numArgs)
+	case *object.Class:
+		// Class instantiation: MyClass() creates an instance
+		return vm.instantiateClass(callee, numArgs)
 	default:
 		return fmt.Errorf("calling non-function and non-builtin")
 	}
+}
+
+func (vm *VM) instantiateClass(class *object.Class, numArgs int) error {
+	// Create instance
+	instance := &object.Instance{
+		Class:  class,
+		Fields: make(map[string]object.Object),
+	}
+
+	// Initialize properties with arguments or null
+	args := vm.stack[vm.sp-numArgs : vm.sp]
+	for i, propName := range class.Properties {
+		if i < len(args) {
+			instance.Fields[propName] = args[i]
+		} else {
+			instance.Fields[propName] = Null
+		}
+	}
+
+	vm.sp = vm.sp - numArgs - 1
+
+	// Call constructor if it exists
+	if constructor, ok := class.Methods["init"]; ok {
+		// Push instance as 'this'
+		vm.stack[vm.sp] = instance
+		vm.sp++
+		// Push constructor arguments
+		for _, arg := range args {
+			vm.stack[vm.sp] = arg
+			vm.sp++
+		}
+
+		// Create closure for constructor
+		constructorClosure := &object.Closure{
+			Fn:   constructor,
+			Free: []object.Object{instance},
+		}
+
+		// Call constructor
+		err := vm.callClosure(constructorClosure, numArgs+1) // +1 for 'this'
+		if err != nil {
+			return err
+		}
+
+		// Constructor may have modified instance, but we still return the instance
+		// Pop any return value from constructor
+		if vm.sp > 0 && vm.stack[vm.sp-1] != instance {
+			vm.sp--
+		}
+		vm.stack[vm.sp] = instance
+		vm.sp++
+	} else {
+		vm.stack[vm.sp] = instance
+		vm.sp++
+	}
+
+	return nil
 }
 
 func (vm *VM) callClosure(cl *object.Closure, numArgs int) error {
@@ -864,7 +1302,8 @@ func (vm *VM) callClosure(cl *object.Closure, numArgs int) error {
 	}
 
 	frame := NewFrame(cl, vm.sp-numArgs)
-	vm.pushFrame(frame)
+	vm.frames[vm.framesIndex] = frame
+	vm.framesIndex++
 	vm.sp = frame.basePointer + cl.Fn.NumLocals
 
 	return nil
@@ -873,17 +1312,16 @@ func (vm *VM) callClosure(cl *object.Closure, numArgs int) error {
 func (vm *VM) callBuiltin(builtin *object.Builtin, numArgs int) error {
 	args := vm.stack[vm.sp-numArgs : vm.sp]
 
-	// Tracing removed from hot path for performance
-	// Use tracing.IsEnabled() && tracing.TraceCPU(...) if needed
 	result := builtin.Fn(args...)
-	
+
 	vm.sp = vm.sp - numArgs - 1
 
 	if result != nil {
-		vm.push(result)
+		vm.stack[vm.sp] = result
 	} else {
-		vm.push(Null)
+		vm.stack[vm.sp] = Null
 	}
+	vm.sp++
 
 	return nil
 }
@@ -896,13 +1334,13 @@ func (vm *VM) pushClosure(constIndex int, numFree int) error {
 	}
 
 	free := make([]object.Object, numFree)
-	for i := 0; i < numFree; i++ {
-		free[i] = vm.stack[vm.sp-numFree+i]
-	}
+	copy(free, vm.stack[vm.sp-numFree:vm.sp])
 	vm.sp = vm.sp - numFree
 
 	closure := &object.Closure{Fn: function, Free: free}
-	return vm.push(closure)
+	vm.stack[vm.sp] = closure
+	vm.sp++
+	return nil
 }
 
 func (vm *VM) executeSpawn(fn object.Object) {
@@ -990,17 +1428,23 @@ func (vm *VM) executeSetIndex(left, index, value object.Object) error {
 		} else {
 			obj.Elements[i] = value
 		}
-		return vm.push(value)
+		vm.stack[vm.sp] = value
+		vm.sp++
+		return nil
 	case *object.PHPArray:
 		obj.Set(index, value)
-		return vm.push(value)
+		vm.stack[vm.sp] = value
+		vm.sp++
+		return nil
 	case *object.Hash:
 		hashKey, ok := index.(object.Hashable)
 		if !ok {
 			return fmt.Errorf("unusable as hash key: %s", index.Type())
 		}
 		obj.Pairs[hashKey.HashKey()] = object.HashPair{Key: index, Value: value}
-		return vm.push(value)
+		vm.stack[vm.sp] = value
+		vm.sp++
+		return nil
 	default:
 		return fmt.Errorf("index assignment not supported: %s", left.Type())
 	}
@@ -1011,10 +1455,14 @@ func (vm *VM) executeArrayPush(arr, value object.Object) error {
 	switch obj := arr.(type) {
 	case *object.Array:
 		obj.Elements = append(obj.Elements, value)
-		return vm.push(value)
+		vm.stack[vm.sp] = value
+		vm.sp++
+		return nil
 	case *object.PHPArray:
 		obj.Push(value)
-		return vm.push(value)
+		vm.stack[vm.sp] = value
+		vm.sp++
+		return nil
 	default:
 		return fmt.Errorf("cannot push to non-array: %s", arr.Type())
 	}
@@ -1047,23 +1495,44 @@ func (vm *VM) executeSlice(arr, start, end object.Object) error {
 	}
 
 	result := arrayObj.Slice(startIdx, endIdx)
-	return vm.push(result)
+	vm.stack[vm.sp] = result
+	vm.sp++
+	return nil
 }
 
 // executeArrayMap applies a function to each element of an array
-// Uses parallel processing for large arrays
 func (vm *VM) executeArrayMap(arr, fn object.Object) error {
 	arrayObj, ok := arr.(*object.Array)
 	if !ok {
 		return fmt.Errorf("map requires array, got %s", arr.Type())
 	}
 
+	builtin, ok := fn.(*object.Builtin)
+	if ok {
+		results := make([]object.Object, len(arrayObj.Elements))
+		// Use parallel processing for large arrays
+		if len(arrayObj.Elements) > ParallelThreshold {
+			var wg sync.WaitGroup
+			for i, el := range arrayObj.Elements {
+				wg.Add(1)
+				go func(idx int, val object.Object) {
+					defer wg.Done()
+					results[idx] = builtin.Fn(val)
+				}(i, el)
+			}
+			wg.Wait()
+		} else {
+			for i, el := range arrayObj.Elements {
+				results[i] = builtin.Fn(el)
+			}
+		}
+		vm.stack[vm.sp] = &object.Array{Elements: results}
+		vm.sp++
+		return nil
+	}
+
 	closure, ok := fn.(*object.Closure)
 	if !ok {
-		builtin, ok := fn.(*object.Builtin)
-		if ok {
-			return vm.executeArrayMapBuiltin(arrayObj, builtin)
-		}
 		return fmt.Errorf("map requires function, got %s", fn.Type())
 	}
 
@@ -1103,31 +1572,9 @@ func (vm *VM) executeArrayMap(arr, fn object.Object) error {
 		}
 	}
 
-	return vm.push(&object.Array{Elements: results})
-}
-
-// executeArrayMapBuiltin applies a builtin function to each array element
-func (vm *VM) executeArrayMapBuiltin(arr *object.Array, builtin *object.Builtin) error {
-	results := make([]object.Object, len(arr.Elements))
-
-	// Parallel processing for large arrays
-	if len(arr.Elements) > ParallelThreshold {
-		var wg sync.WaitGroup
-		for i, el := range arr.Elements {
-			wg.Add(1)
-			go func(idx int, val object.Object) {
-				defer wg.Done()
-				results[idx] = builtin.Fn(val)
-			}(i, el)
-		}
-		wg.Wait()
-	} else {
-		for i, el := range arr.Elements {
-			results[i] = builtin.Fn(el)
-		}
-	}
-
-	return vm.push(&object.Array{Elements: results})
+	vm.stack[vm.sp] = &object.Array{Elements: results}
+	vm.sp++
+	return nil
 }
 
 // executeArrayFilter filters array elements using a predicate function
@@ -1137,12 +1584,45 @@ func (vm *VM) executeArrayFilter(arr, fn object.Object) error {
 		return fmt.Errorf("filter requires array, got %s", arr.Type())
 	}
 
+	builtin, ok := fn.(*object.Builtin)
+	if ok {
+		var results []object.Object
+		if len(arrayObj.Elements) > ParallelThreshold {
+			keepFlags := make([]bool, len(arrayObj.Elements))
+			var wg sync.WaitGroup
+
+			for i, el := range arrayObj.Elements {
+				wg.Add(1)
+				go func(idx int, val object.Object) {
+					defer wg.Done()
+					result := builtin.Fn(val)
+					if isTruthy(result) {
+						keepFlags[idx] = true
+					}
+				}(i, el)
+			}
+			wg.Wait()
+
+			for i, keep := range keepFlags {
+				if keep {
+					results = append(results, arrayObj.Elements[i])
+				}
+			}
+		} else {
+			for _, el := range arrayObj.Elements {
+				result := builtin.Fn(el)
+				if isTruthy(result) {
+					results = append(results, el)
+				}
+			}
+		}
+		vm.stack[vm.sp] = &object.Array{Elements: results}
+		vm.sp++
+		return nil
+	}
+
 	closure, ok := fn.(*object.Closure)
 	if !ok {
-		builtin, ok := fn.(*object.Builtin)
-		if ok {
-			return vm.executeArrayFilterBuiltin(arrayObj, builtin)
-		}
 		return fmt.Errorf("filter requires function, got %s", fn.Type())
 	}
 
@@ -1184,44 +1664,9 @@ func (vm *VM) executeArrayFilter(arr, fn object.Object) error {
 		}
 	}
 
-	return vm.push(&object.Array{Elements: results})
-}
-
-// executeArrayFilterBuiltin filters array with a builtin predicate
-func (vm *VM) executeArrayFilterBuiltin(arr *object.Array, builtin *object.Builtin) error {
-	var results []object.Object
-
-	if len(arr.Elements) > ParallelThreshold {
-		keepFlags := make([]bool, len(arr.Elements))
-		var wg sync.WaitGroup
-
-		for i, el := range arr.Elements {
-			wg.Add(1)
-			go func(idx int, val object.Object) {
-				defer wg.Done()
-				result := builtin.Fn(val)
-				if isTruthy(result) {
-					keepFlags[idx] = true
-				}
-			}(i, el)
-		}
-		wg.Wait()
-
-		for i, keep := range keepFlags {
-			if keep {
-				results = append(results, arr.Elements[i])
-			}
-		}
-	} else {
-		for _, el := range arr.Elements {
-			result := builtin.Fn(el)
-			if isTruthy(result) {
-				results = append(results, el)
-			}
-		}
-	}
-
-	return vm.push(&object.Array{Elements: results})
+	vm.stack[vm.sp] = &object.Array{Elements: results}
+	vm.sp++
+	return nil
 }
 
 // applyFunctionToElement applies a closure to a single element
@@ -1246,7 +1691,7 @@ func (vm *VM) applyFunctionToElement(closure *object.Closure, element object.Obj
 
 	// If the function takes an index parameter, push it too
 	if closure.Fn.NumParameters >= 2 {
-		newVM.stack[1] = &object.Integer{Value: int64(index)}
+		newVM.stack[1] = object.GetCachedInteger(int64(index))
 		newVM.sp = 2
 	}
 
@@ -1261,4 +1706,56 @@ func (vm *VM) applyFunctionToElement(closure *object.Closure, element object.Obj
 		return newVM.stack[newVM.sp-1], nil
 	}
 	return Null, nil
+}
+
+// CallClosure calls a closure with the given arguments, using the provided constants and globals
+// This is useful for calling closures from builtin functions
+func CallClosure(closure *object.Closure, constants []object.Object, globals []object.Object, args ...object.Object) (object.Object, error) {
+	if len(args) != closure.Fn.NumParameters {
+		return nil, fmt.Errorf("wrong number of arguments: want=%d, got=%d", closure.Fn.NumParameters, len(args))
+	}
+
+	// Create a new VM for this function call
+	newVM := &VM{
+		constants:   constants,
+		stack:       make([]object.Object, StackSize),
+		sp:          0,
+		globals:     globals,
+		frames:      make([]*Frame, MaxFrames),
+		framesIndex: 1,
+	}
+
+	// Set up the function call
+	frame := NewFrame(closure, 0)
+	newVM.frames[0] = frame
+
+	// Push arguments
+	for _, arg := range args {
+		newVM.stack[newVM.sp] = arg
+		newVM.sp++
+	}
+
+	// Run the function
+	err := newVM.Run()
+	if err != nil {
+		return nil, err
+	}
+
+	// Get the result
+	if newVM.sp > 0 {
+		return newVM.stack[newVM.sp-1], nil
+	}
+	return Null, nil
+}
+
+// Deprecated: NewOptimized is now just an alias for New
+// Kept for backwards compatibility
+func NewOptimized(bytecode *compiler.Bytecode) *VM {
+	return New(bytecode)
+}
+
+// Deprecated: NewOptimizedWithGlobalsStore is now just an alias for NewWithGlobalsStore
+// Kept for backwards compatibility
+func NewOptimizedWithGlobalsStore(bytecode *compiler.Bytecode, s []object.Object) *VM {
+	return NewWithGlobalsStore(bytecode, s)
 }

@@ -1,0 +1,40 @@
+// Bài 1: Tính thể tích hình cầu từ diện tích mặt cầu
+// Công thức: V = (4π/3) * (√(S/4π))³
+
+const PI = 3.141593;
+
+place sqrt = fn(x) {
+    // Phương pháp Newton đơn giản để tính căn bậc 2
+    if (x == 0) {
+        return 0.0;
+    }
+    place guess = x / 2.0;
+    place i = 0;
+    while (i < 10) {
+        guess = (guess + x / guess) / 2.0;
+        i = i + 1;
+    }
+    return guess;
+};
+
+place pow = fn(x, n) {
+    place result = 1.0;
+    place i = 0;
+    while (i < n) {
+        result = result * x;
+        i = i + 1;
+    }
+    return result;
+};
+
+// Diện tích mặt cầu
+place S = 256.128;
+
+// Tính R từ S: R = √(S / 4π)
+place R = sqrt(S / (4 * PI));
+
+// Tính V = (4π/3) * R³
+place V = (4.0 * PI / 3.0) * pow(R, 3);
+
+println("Nhap dien tich S: " + str(S));
+println("The tich V = " + str(V));

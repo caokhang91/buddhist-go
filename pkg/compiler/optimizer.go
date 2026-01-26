@@ -53,6 +53,12 @@ func (o *Optimizer) optimizeStatement(stmt ast.Statement) ast.Statement {
 			Name:  s.Name,
 			Value: o.optimizeExpression(s.Value),
 		}
+	case *ast.SetStatement:
+		return &ast.SetStatement{
+			Token: s.Token,
+			Name:  s.Name,
+			Value: o.optimizeExpression(s.Value),
+		}
 	case *ast.ConstStatement:
 		return &ast.ConstStatement{
 			Token: s.Token,
@@ -67,13 +73,24 @@ func (o *Optimizer) optimizeStatement(stmt ast.Statement) ast.Statement {
 			}
 		}
 		return s
+	case *ast.SendStatement:
+		return &ast.SendStatement{
+			Token:   s.Token,
+			Channel: o.optimizeExpression(s.Channel),
+			Value:   o.optimizeExpression(s.Value),
+		}
 	case *ast.BlockStatement:
 		return o.optimizeBlockStatement(s)
 	case *ast.WhileStatement:
+		var until ast.Expression
+		if s.Until != nil {
+			until = o.optimizeExpression(s.Until)
+		}
 		return &ast.WhileStatement{
 			Token:     s.Token,
 			Condition: o.optimizeExpression(s.Condition),
 			Body:      o.optimizeBlockStatement(s.Body),
+			Until:     until,
 		}
 	case *ast.ForStatement:
 		var init ast.Statement

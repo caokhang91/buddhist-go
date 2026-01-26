@@ -45,9 +45,9 @@ func (p *Program) String() string {
 	return out.String()
 }
 
-// LetStatement represents a let statement: let x = 5;
+// LetStatement represents a place statement: place x = 5;
 type LetStatement struct {
-	Token token.Token // the token.LET token
+	Token token.Token // the token.PLACE token
 	Name  *Identifier
 	Value Expression
 }
@@ -87,6 +87,27 @@ func (cs *ConstStatement) String() string {
 	return out.String()
 }
 
+// SetStatement represents a set statement: set x = 5;
+type SetStatement struct {
+	Token token.Token // the token.SET token
+	Name  *Identifier
+	Value Expression
+}
+
+func (ss *SetStatement) statementNode()       {}
+func (ss *SetStatement) TokenLiteral() string { return ss.Token.Literal }
+func (ss *SetStatement) String() string {
+	var out bytes.Buffer
+	out.WriteString(ss.TokenLiteral() + " ")
+	out.WriteString(ss.Name.String())
+	out.WriteString(" = ")
+	if ss.Value != nil {
+		out.WriteString(ss.Value.String())
+	}
+	out.WriteString(";")
+	return out.String()
+}
+
 // ReturnStatement represents a return statement: return 5;
 type ReturnStatement struct {
 	Token       token.Token // the 'return' token
@@ -100,6 +121,26 @@ func (rs *ReturnStatement) String() string {
 	out.WriteString(rs.TokenLiteral() + " ")
 	if rs.ReturnValue != nil {
 		out.WriteString(rs.ReturnValue.String())
+	}
+	out.WriteString(";")
+	return out.String()
+}
+
+// SendStatement represents a channel send statement: ch <- value;
+type SendStatement struct {
+	Token   token.Token // the '<-' token or channel token
+	Channel Expression  // channel identifier
+	Value   Expression  // value to send
+}
+
+func (ss *SendStatement) statementNode()       {}
+func (ss *SendStatement) TokenLiteral() string { return ss.Token.Literal }
+func (ss *SendStatement) String() string {
+	var out bytes.Buffer
+	out.WriteString(ss.Channel.String())
+	out.WriteString(" <- ")
+	if ss.Value != nil {
+		out.WriteString(ss.Value.String())
 	}
 	out.WriteString(";")
 	return out.String()
@@ -291,6 +332,7 @@ type WhileStatement struct {
 	Token     token.Token
 	Condition Expression
 	Body      *BlockStatement
+	Until     Expression // Optional until clause
 }
 
 func (ws *WhileStatement) statementNode()       {}
@@ -301,6 +343,11 @@ func (ws *WhileStatement) String() string {
 	out.WriteString(ws.Condition.String())
 	out.WriteString(") ")
 	out.WriteString(ws.Body.String())
+	if ws.Until != nil {
+		out.WriteString(" until (")
+		out.WriteString(ws.Until.String())
+		out.WriteString(")")
+	}
 	return out.String()
 }
 
@@ -523,10 +570,11 @@ func (ae *AssignmentExpression) String() string {
 
 // IndexAssignmentExpression represents an assignment to an index: arr[0] = 1
 type IndexAssignmentExpression struct {
-	Token token.Token
-	Left  Expression
-	Index Expression
-	Value Expression
+	Token      token.Token // the '=' token
+	IndexToken token.Token // the '[' or '.' token from the original access
+	Left       Expression
+	Index      Expression
+	Value      Expression
 }
 
 func (iae *IndexAssignmentExpression) expressionNode()      {}
@@ -534,20 +582,28 @@ func (iae *IndexAssignmentExpression) TokenLiteral() string { return iae.Token.L
 func (iae *IndexAssignmentExpression) String() string {
 	var out bytes.Buffer
 	out.WriteString(iae.Left.String())
-	out.WriteString("[")
+	if iae.IndexToken.Type == token.DOT {
+		out.WriteString(".")
+	} else {
+		out.WriteString("[")
+	}
 	if iae.Index != nil {
 		out.WriteString(iae.Index.String())
 	}
-	out.WriteString("] = ")
+	if iae.IndexToken.Type != token.DOT {
+		out.WriteString("]")
+	}
+	out.WriteString(" = ")
 	out.WriteString(iae.Value.String())
 	return out.String()
 }
 
 // ClassStatement represents a class declaration
 type ClassStatement struct {
-	Token token.Token // the 'class' token
-	Name  *Identifier
-	Body  *BlockStatement // Contains method definitions
+	Token  token.Token // the 'class' token
+	Name   *Identifier
+	Parent *Identifier // Parent class for inheritance (extends)
+	Body   *BlockStatement // Contains method definitions
 }
 
 func (cs *ClassStatement) statementNode()       {}
@@ -569,6 +625,15 @@ type ThisExpression struct {
 func (te *ThisExpression) expressionNode()      {}
 func (te *ThisExpression) TokenLiteral() string { return te.Token.Literal }
 func (te *ThisExpression) String() string       { return "this" }
+
+// SuperExpression represents 'super' keyword
+type SuperExpression struct {
+	Token token.Token // the 'super' token
+}
+
+func (se *SuperExpression) expressionNode()      {}
+func (se *SuperExpression) TokenLiteral() string { return se.Token.Literal }
+func (se *SuperExpression) String() string       { return "super" }
 
 // ImportStatement represents an import statement: import { name } from "module"
 type ImportStatement struct {
