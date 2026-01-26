@@ -60,6 +60,16 @@ type VM struct {
 
 	frames      []*Frame
 	framesIndex int
+
+	// exceptionHandlers is a stack of active try-handlers (for OpTry/OpThrow).
+	exceptionHandlers []exceptionHandler
+}
+
+type exceptionHandler struct {
+	catchPos    int
+	finallyPos  int
+	framesIndex int
+	sp          int
 }
 
 // New creates a new VM
@@ -78,6 +88,7 @@ func New(bytecode *compiler.Bytecode) *VM {
 		globals:     make([]object.Object, GlobalsSize),
 		frames:      frames,
 		framesIndex: 1,
+		exceptionHandlers: make([]exceptionHandler, 0, 16),
 	}
 }
 
@@ -920,6 +931,61 @@ func (vm *VM) Run() error {
 
 		case code.OpContinue:
 			return &ContinueSignal{}
+
+		case code.OpTry:
+			catchPos := int(code.ReadUint16(ins[ip+1:]))
+			finallyPos := int(code.ReadUint16(ins[ip+3:]))
+			frame.ip += 4
+
+			vm.exceptionHandlers = append(vm.exceptionHandlers, exceptionHandler{
+				catchPos:    catchPos,
+				finallyPos:  finallyPos,
+				framesIndex: vm.framesIndex,
+				sp:          vm.sp,
+			})
+
+		case code.OpThrow:
+			// Pop thrown value
+			if vm.sp == 0 {
+				return fmt.Errorf("throw with empty stack")
+			}
+			vm.sp--
+			thrown := vm.stack[vm.sp]
+
+			if len(vm.exceptionHandlers) == 0 {
+				return fmt.Errorf("uncaught throw: %s", thrown.Inspect())
+			}
+
+			// Pop handler and unwind VM state back to the try site
+			h := vm.exceptionHandlers[len(vm.exceptionHandlers)-1]
+			vm.exceptionHandlers = vm.exceptionHandlers[:len(vm.exceptionHandlers)-1]
+
+			vm.framesIndex = h.framesIndex
+			frame = vm.frames[vm.framesIndex-1]
+			frameIns = frame.Instructions()
+			vm.sp = h.sp
+
+			// Push thrown value so catch can bind/pop it
+			vm.stack[vm.sp] = thrown
+			vm.sp++
+
+			if h.catchPos != 0 {
+				frame.ip = h.catchPos - 1
+			} else if h.finallyPos != 0 {
+				frame.ip = h.finallyPos - 1
+				// NOTE: Uncaught rethrow after finally is not implemented.
+			} else {
+				return fmt.Errorf("uncaught throw: %s", thrown.Inspect())
+			}
+
+		case code.OpFinally:
+			// Normal-flow exit from try: pop handler and jump to target (finally or after).
+			pos := int(code.ReadUint16(ins[ip+1:]))
+			frame.ip += 2
+			if len(vm.exceptionHandlers) > 0 {
+				vm.exceptionHandlers = vm.exceptionHandlers[:len(vm.exceptionHandlers)-1]
+			}
+			frame.ip = pos - 1
 
 		case code.OpSetIndex:
 			vm.sp -= 3

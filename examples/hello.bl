@@ -4,8 +4,8 @@ println("=== Buddhist Lang Demo ===");
 println("");
 
 // Variables
-place name = "Buddhist";
-place version = 1.0;
+place String name = "Buddhist";
+place int version = 1.0;
 println("Language: " + name);
 
 // Arithmetic

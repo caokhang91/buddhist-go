@@ -775,6 +775,106 @@ func (c *Compiler) Compile(node ast.Node) error {
 			return err
 		}
 		c.emit(code.OpReceive)
+
+	case *ast.ThrowStatement:
+		if node.Value != nil {
+			if err := c.Compile(node.Value); err != nil {
+				return err
+			}
+		} else {
+			c.emit(code.OpNull)
+		}
+		c.emit(code.OpThrow)
+
+	case *ast.TryExpression:
+		// Layout:
+		//   OpTry catchPos finallyPos
+		//   <tryBlock>
+		//   OpFinally <finallyPos|afterPos>   ; pop handler + jump
+		// catchPos:
+		//   <bind/pop thrown value>
+		//   <catchBlock>
+		//   OpJump <finallyPos|afterPos>
+		// finallyPos:
+		//   <finallyBlock>
+		// afterPos:
+		//   OpNull (expression result)
+
+		hasCatch := node.CatchBlock != nil
+		hasFinally := node.FinallyBlock != nil
+
+		tryPos := c.emit(code.OpTry, 9999, 0) // patch catch/finally later
+
+		// Compile try block
+		if err := c.Compile(node.TryBlock); err != nil {
+			return err
+		}
+
+		// Placeholder OpFinally jump (always emitted to pop handler on normal flow)
+		finallyJumpPos := c.emit(code.OpFinally, 9999)
+
+		// Catch block start
+		catchPos := 0
+		var catchJumpToEndPos int
+		if hasCatch {
+			catchPos = len(c.currentInstructions())
+
+			// Bind (or discard) the thrown value, which is left on stack by OpThrow
+			if node.CatchVar != nil {
+				// Prefer existing symbol if already defined; otherwise define it.
+				sym, ok := c.symbolTable.Resolve(node.CatchVar.Value)
+				if !ok {
+					sym = c.symbolTable.Define(node.CatchVar.Value)
+				}
+				if sym.Scope == GlobalScope {
+					c.emit(code.OpSetGlobal, sym.Index)
+				} else {
+					c.emit(code.OpSetLocal, sym.Index)
+				}
+			} else {
+				// No catch var: discard thrown value
+				c.emit(code.OpPop)
+			}
+
+			if err := c.Compile(node.CatchBlock); err != nil {
+				return err
+			}
+
+			// Jump to finally/after (handler already popped by OpThrow)
+			catchJumpToEndPos = c.emit(code.OpJump, 9999)
+		}
+
+		// Finally block start
+		finallyPos := 0
+		if hasFinally {
+			finallyPos = len(c.currentInstructions())
+			if err := c.Compile(node.FinallyBlock); err != nil {
+				return err
+			}
+		}
+
+		afterPos := len(c.currentInstructions())
+		c.emit(code.OpNull) // TryExpression result
+
+		// Patch OpTry operands and OpFinally jump
+		// OpTry second operand points to finally start (or 0 if none).
+		c.replaceInstruction(tryPos, code.Make(code.OpTry, catchPos, finallyPos))
+
+		// On normal flow, pop handler then jump to finally (if present) else after
+		if hasFinally {
+			c.changeOperand(finallyJumpPos, finallyPos)
+		} else {
+			c.changeOperand(finallyJumpPos, afterPos)
+		}
+
+		// Patch catch jump to finally/after if catch exists
+		if hasCatch {
+			if hasFinally {
+				c.changeOperand(catchJumpToEndPos, finallyPos)
+			} else {
+				c.changeOperand(catchJumpToEndPos, afterPos)
+			}
+		}
 	}
 
 	return nil

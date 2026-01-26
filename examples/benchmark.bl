@@ -5,8 +5,8 @@
 place sum = 0;
 place i = 0;
 while (i < 1000) {
-    sum = sum + i;
-    i = i + 1;
+    set sum = sum + i;
+    set i = i + 1;
 }
 println("Sum 1-999: " + str(sum));
 
@@ -14,7 +14,7 @@ println("Sum 1-999: " + str(sum));
 place result = 10 + 20 * 3 - 5;  // Should be folded at compile time
 println("Constant folding result: " + str(result));
 
-// Test 3: Array operations
+// Test 3: Kiểm tra Array
 place arr = [];
 place j = 0;
 while (j < 100) {

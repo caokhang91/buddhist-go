@@ -92,6 +92,7 @@ func New(l lexer.TokenLexer) *Parser {
 	p.registerPrefix(token.LT, p.parseReceiveExpression) // Support < as prefix for channel receive
 	p.registerPrefix(token.THIS, p.parseThisExpression)
 	p.registerPrefix(token.SUPER, p.parseSuperExpression)
+	p.registerPrefix(token.TRY, p.parseTryExpression)
 
 	p.infixParseFns = make(map[token.TokenType]infixParseFn)
 	p.registerInfix(token.PLUS, p.parseInfixExpression)
@@ -230,6 +231,8 @@ func (p *Parser) parseStatement() ast.Statement {
 		return p.parseContinueStatement()
 	case token.CLASS:
 		return p.parseClassStatement()
+	case token.THROW:
+		return p.parseThrowStatement()
 	default:
 		return p.parseExpressionStatement()
 	}
@@ -982,4 +985,82 @@ func (p *Parser) parseDotExpression(left ast.Expression) ast.Expression {
 	exp.Index = &ast.Identifier{Token: p.curToken, Value: p.curToken.Literal}
 
 	return exp
+}
+
+// parseTryExpression parses try/catch/finally blocks:
+// try { ... } catch { ... }
+// try { ... } catch (e) { ... }
+// try { ... } finally { ... }
+// try { ... } catch (e) { ... } finally { ... }
+func (p *Parser) parseTryExpression() ast.Expression {
+	exp := &ast.TryExpression{Token: p.curToken}
+
+	// try { ... }
+	if !p.expectPeek(token.LBRACE) {
+		return nil
+	}
+	exp.TryBlock = p.parseBlockStatement()
+	if exp.TryBlock == nil {
+		return nil
+	}
+
+	// Optional catch
+	if p.peekTokenIs(token.CATCH) {
+		p.nextToken() // consume 'catch'
+
+		// Optional catch (e)
+		if p.peekTokenIs(token.LPAREN) {
+			p.nextToken() // consume '('
+			if !p.expectPeek(token.IDENT) {
+				return nil
+			}
+			exp.CatchVar = &ast.Identifier{Token: p.curToken, Value: p.curToken.Literal}
+			if !p.expectPeek(token.RPAREN) {
+				return nil
+			}
+		}
+
+		if !p.expectPeek(token.LBRACE) {
+			return nil
+		}
+		exp.CatchBlock = p.parseBlockStatement()
+		if exp.CatchBlock == nil {
+			return nil
+		}
+	}
+
+	// Optional finally
+	if p.peekTokenIs(token.FINALLY) {
+		p.nextToken() // consume 'finally'
+		if !p.expectPeek(token.LBRACE) {
+			return nil
+		}
+		exp.FinallyBlock = p.parseBlockStatement()
+		if exp.FinallyBlock == nil {
+			return nil
+		}
+	}
+
+	return exp
+}
+
+// parseThrowStatement parses: throw <expr>;
+func (p *Parser) parseThrowStatement() *ast.ThrowStatement {
+	stmt := &ast.ThrowStatement{Token: p.curToken}
+
+	// Allow bare `throw;` (throws null) for convenience
+	if p.peekTokenIs(token.SEMICOLON) {
+		p.nextToken()
+		stmt.Value = &ast.NullLiteral{Token: token.Token{Type: token.NULL, Literal: "null", Line: p.curToken.Line, Column: p.curToken.Column}}
+		return stmt
+	}
+
+	p.nextToken()
+	stmt.Value = p.parseExpression(LOWEST)
+
+	if p.peekTokenIs(token.SEMICOLON) {
+		p.nextToken()
+	}
+
+	return stmt
 }

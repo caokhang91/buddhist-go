@@ -5,7 +5,6 @@ import (
 	"github.com/caokhang91/buddhist-go/pkg/lexer"
 	"github.com/caokhang91/buddhist-go/pkg/parser"
 	"github.com/caokhang91/buddhist-go/pkg/compiler"
-	"github.com/caokhang91/buddhist-go/pkg/object"
 )
 
 func TestFibonacci(t *testing.T) {
