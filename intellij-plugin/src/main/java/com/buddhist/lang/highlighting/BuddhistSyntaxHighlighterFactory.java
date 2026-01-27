@@ -22,7 +22,7 @@ public class BuddhistSyntaxHighlighterFactory extends SyntaxHighlighterFactory {
         return new BuddhistSyntaxHighlighter();
     }
 
-    private static class BuddhistSyntaxHighlighter implements SyntaxHighlighter {
+    public static class BuddhistSyntaxHighlighter implements SyntaxHighlighter {
         private static final TextAttributesKey[] EMPTY_KEYS = new TextAttributesKey[0];
 
         @NotNull

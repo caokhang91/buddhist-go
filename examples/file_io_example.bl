@@ -1,0 +1,50 @@
+// File I/O Example - Buddhist Lang
+// Demonstrates readFile, writeFile, and readDir functions
+
+println("=== File I/O Demo ===");
+println("");
+
+// Write a file
+place filename = "test_output.txt";
+place content = "Hello from Buddhist Lang!\nThis is a test file.\n";
+writeFile(filename, content);
+println("Wrote file: " + filename);
+
+// Read the file back
+place readContent = readFile(filename);
+println("Read file content:");
+println(readContent);
+
+// Read current directory
+println("");
+println("Current directory contents:");
+place files = readDir(".");
+place i = 0;
+while (i < len(files)) {
+    println("  - " + files[i]);
+    i = i + 1;
+}
+
+// Write multiple files
+println("");
+println("Creating multiple test files...");
+writeFile("file1.txt", "Content of file 1");
+writeFile("file2.txt", "Content of file 2");
+writeFile("file3.txt", "Content of file 3");
+
+// List files again
+println("");
+println("Directory contents after creating files:");
+place files2 = readDir(".");
+place j = 0;
+while (j < len(files2)) {
+    place file = files2[j];
+    // Only show .txt files
+    if (endsWith(file, ".txt")) {
+        println("  - " + file);
+    }
+    j = j + 1;
+}
+
+println("");
+println("=== File I/O Demo Complete ===");

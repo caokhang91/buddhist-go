@@ -56,8 +56,19 @@ func main() {
 			fmt.Fprintf(os.Stderr, "Error: %s\n", err)
 			os.Exit(1)
 		}
+	} else if args[0] == "--gui" || args[0] == "-g" {
+		// GUI mode: run file with direct stdout/stderr (no HTML), for scripts using gui_run()
+		if len(args) < 2 {
+			fmt.Fprintln(os.Stderr, "Usage: buddhist-go --gui <file>")
+			fmt.Fprintln(os.Stderr, "  Run a script with GUI; stdout/stderr go to terminal, no HTML output.")
+			os.Exit(1)
+		}
+		if err := runFileDirect(args[1]); err != nil {
+			fmt.Fprintf(os.Stderr, "Error: %s\n", err)
+			os.Exit(1)
+		}
 	} else {
-		// Execute file
+		// Execute file (output wrapped as HTML)
 		filename := args[0]
 		if err := executeFile(filename); err != nil {
 			fmt.Fprintf(os.Stderr, "Error: %s\n", err)
@@ -74,6 +85,7 @@ func printHelp() {
 	fmt.Println("  buddhist-go -h, --help         Show this help message")
 	fmt.Println("  buddhist-go -v, --version      Show version information")
 	fmt.Println("  buddhist-go -b, --benchmark <file>  Benchmark a script file")
+	fmt.Println("  buddhist-go -g, --gui <file>       Run script with GUI (direct stdout/stderr, no HTML)")
 	fmt.Println()
 	fmt.Println("Performance Features (v1.0.0):")
 	fmt.Println("  - Optimized VM with inlined operations and cached frame references")
@@ -97,6 +109,16 @@ func printHelp() {
 	fmt.Println("  - Hash Maps: {\"key\": \"value\"}")
 	fmt.Println("  - Concurrency: spawn fn() { ... }")
 	fmt.Println("  - Channels: let ch = channel; ch <- value;")
+}
+
+// runFileDirect runs a script file without capturing stdout/stderr and without HTML.
+// Use for GUI scripts: ./buddhist-go --gui examples/address_management.bl
+func runFileDirect(filename string) error {
+	content, err := os.ReadFile(filename)
+	if err != nil {
+		return fmt.Errorf("could not read file %s: %w", filename, err)
+	}
+	return execute(string(content))
 }
 
 func executeFile(filename string) error {

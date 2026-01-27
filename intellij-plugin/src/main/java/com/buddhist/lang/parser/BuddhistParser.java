@@ -1,6 +1,7 @@
 package com.buddhist.lang.parser;
 
 import com.buddhist.lang.psi.BuddhistTypes;
+import com.intellij.lang.ASTNode;
 import com.intellij.lang.PsiBuilder;
 import com.intellij.lang.PsiBuilderFactory;
 import com.intellij.lang.PsiParser;
@@ -10,7 +11,7 @@ import org.jetbrains.annotations.NotNull;
 public class BuddhistParser implements PsiParser {
     @NotNull
     @Override
-    public com.intellij.lang.ast.ASTNode parse(@NotNull IElementType root, @NotNull com.intellij.lang.PsiBuilder builder) {
+    public ASTNode parse(@NotNull IElementType root, @NotNull com.intellij.lang.PsiBuilder builder) {
         PsiBuilder.Marker rootMarker = builder.mark();
         
         while (!builder.eof()) {

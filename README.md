@@ -15,6 +15,7 @@ A high-performance bytecode interpreter language built with Go, leveraging Go's 
 - **Constant Folding**: Compile-time optimization for constant expressions
 - **Integer Caching**: Pre-allocated small integers (-128 to 256) to reduce GC pressure
 - **Optimized Lexer**: Byte slice processing for faster tokenization
+- **GUI Support**: Built-in GUI functions powered by [faiface/pixel](https://github.com/faiface/pixel) for creating windows and interactive applications
 
 ## Installation
 
@@ -240,6 +241,144 @@ println(msg);
 | `endsWith(str, suffix)` | Check if string ends with suffix |
 | `repeat(str, n)` | Repeat string n times |
 
+### GUI Functions
+
+Built-in GUI functions powered by [faiface/pixel](https://github.com/faiface/pixel) for creating graphical applications. Chi tiết hiện trạng và kế hoạch phát triển: **[ROADMAP_GUI.md](ROADMAP_GUI.md)**.
+
+| Function | Description |
+|----------|-------------|
+| `gui_window(config)` | Create a new GUI window with configuration (title, width, height, vsync) |
+| `gui_button(window, config)` | Create a button with text, position, size, and onClick callback |
+| `gui_table(window, config)` | Create a table with headers and data rows for displaying structured data |
+| `gui_show(window)` | Mark a window to be shown (windows are created when `gui_run()` is called) |
+| `gui_close(window)` | Close and remove a window |
+| `gui_run()` | Start the GUI event loop (creates all windows and handles events) |
+
+**Example:**
+
+```javascript
+// Create a window
+place window = gui_window({
+    "title": "My Buddhist App",
+    "width": 800,
+    "height": 600,
+    "vsync": true
+});
+
+// Add a button with click handler
+place btn = gui_button(window, {
+    "text": "Click Me!",
+    "x": 100.0,
+    "y": 100.0,
+    "width": 200.0,
+    "height": 50.0,
+    "onClick": fn() {
+        println("Button was clicked!");
+    }
+});
+
+// Show window and run event loop
+gui_show(window);
+gui_run();
+```
+
+**Table Example:**
+
+```javascript
+// Create a table for displaying data
+place table = gui_table(window, {
+    "x": 50.0,
+    "y": 100.0,
+    "width": 700.0,
+    "height": 300.0,
+    "headers": ["Name", "Address", "City"],
+    "data": [
+        ["John Doe", "123 Main St", "New York"],
+        ["Jane Smith", "456 Oak Ave", "Los Angeles"]
+    ],
+    "rowHeight": 25.0,
+    "headerHeight": 30.0,
+    "onRowClick": fn(rowIndex) {
+        println("Row clicked: ", rowIndex);
+    }
+});
+```
+
+**Running GUI scripts:** Use `--gui` or `-g` so the window opens and stdout goes to the terminal (without HTML output):
+```bash
+./buddhist-go --gui examples/address_management.bl
+# or
+./buddhist-go -g examples/gui_example.bl
+```
+
+**macOS: "Cocoa: Failed to find service port for display"** — GUI cần có display thật. Nếu gặp lỗi này:
+- Chạy từ **Terminal.app** (hoặc iTerm) thay vì từ SSH / headless / một số terminal trong IDE.
+- Đảm bảo đang login vào macOS với session có đồ họa (không phải `ssh ...` từ máy khác).
+- Thử mở một cửa sổ Terminal mới và chạy lại: `cd ... && ./buddhist-go -g examples/address_management.bl`.
+
+**Note:** 
+- Button and table coordinates use pixel space where (0,0) is at the bottom-left corner
+- Windows are created when `gui_run()` is called, not immediately
+- The event loop runs until all windows are closed
+- See `examples/gui_example.bl` for a basic example
+- See `examples/address_management.bl` for a table example with address management
+
+### HTTP Functions
+
+| Function | Description |
+|----------|-------------|
+| `http_request(config)` | Make an HTTP request with config (url, method, headers, body, timeout_ms, progress callback) |
+| `curl(config)` | Alias for `http_request` |
+
+**Example:**
+
+```javascript
+place response = http_request({
+    "url": "https://api.example.com/data",
+    "method": "GET",
+    "headers": {"Authorization": "Bearer token"},
+    "timeout_ms": 5000
+});
+
+println(response["status"]);  // HTTP status code
+println(response["body"]);    // Response body
+println(response["headers"]); // Response headers
+```
+
+### File I/O Functions
+
+| Function | Description |
+|----------|-------------|
+| `readFile(path)` | Read the entire contents of a file as a string |
+| `writeFile(path, content)` | Write a string or blob to a file (creates file if it doesn't exist) |
+| `readDir(path)` | Read directory contents and return an array of file/directory names |
+
+**Example:**
+
+```javascript
+// Write a file
+writeFile("test.txt", "Hello, World!\nThis is a test file.");
+
+// Read the file back
+place content = readFile("test.txt");
+println(content);
+
+// List directory contents
+place files = readDir(".");
+place i = 0;
+while (i < len(files)) {
+    println("  - " + files[i]);
+    i = i + 1;
+}
+```
+
+**Note:**
+- `readFile` returns the file content as a string
+- `writeFile` accepts either a string or blob as content
+- `readDir` returns an array of strings (file/directory names), sorted alphabetically
+- File paths are relative to the current working directory
+- See `examples/file_io_example.bl` for a complete example
+
 ## Project Structure
 
 ```
@@ -306,6 +445,9 @@ go test ./...
 ```bash
 go run . examples/hello.bl
 go run . examples/fizzbuzz.bl
+go run . examples/gui_example.bl
+go run . examples/http_request.bl
+go run . examples/file_io_example.bl
 ```
 
 ## IDE Support
@@ -324,7 +466,8 @@ Contributions are welcome! Please feel free to submit a Pull Request.
 - ✅ Math functions: `sqrt()`, `pow()`, `abs()`, `floor()`, `ceil()`, `round()`, `sin()`, `cos()`, `tan()`, `log()`, `exp()`, `random()`
 - ✅ String functions: `split()`, `join()`, `trim()`, `substring()`, `replace()`, `upper()`, `lower()`, `startsWith()`, `endsWith()`, `repeat()`
 - ✅ Array functions: `map()`, `filter()`, `reduce()`, `reverse()`, `contains()`, `indexOf()`, `unique()`, `flatten()`, `sum()`, `min()`, `max()`, `avg()`
-- 🔲 File I/O: `readFile()`, `writeFile()`, `readDir()`
+- ✅ GUI functions: `gui_window()`, `gui_button()`, `gui_show()`, `gui_close()`, `gui_run()` (powered by faiface/pixel)
+- ✅ File I/O: `readFile()`, `writeFile()`, `readDir()`
 
 ### Medium-term (1 month)
 - 🔲 Module/Import system: `import "utils.bl"`

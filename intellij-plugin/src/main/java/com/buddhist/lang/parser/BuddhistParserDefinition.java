@@ -10,6 +10,7 @@ import com.intellij.openapi.project.Project;
 import com.intellij.psi.FileViewProvider;
 import com.intellij.psi.PsiElement;
 import com.intellij.psi.PsiFile;
+import com.intellij.psi.impl.source.tree.LeafPsiElement;
 import com.intellij.psi.tree.IFileElementType;
 import com.intellij.psi.tree.TokenSet;
 import com.buddhist.lang.psi.BuddhistTypes;
@@ -77,6 +78,6 @@ public class BuddhistParserDefinition implements ParserDefinition {
     @NotNull
     @Override
     public PsiElement createElement(ASTNode node) {
-        return com.intellij.psi.impl.source.tree.LeafPsiElement.Factory.createElement(node);
+        return new LeafPsiElement(node.getElementType(), node.getText());
     }
 }

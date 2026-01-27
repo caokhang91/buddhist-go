@@ -1261,6 +1261,44 @@ var Builtins = []BuiltinDef{
 		Name: "curl",
 		Fn:   curlBuiltin,
 	},
+	// GUI functions
+	{
+		Name: "gui_window",
+		Fn:   guiWindowBuiltin,
+	},
+	{
+		Name: "gui_button",
+		Fn:   guiButtonBuiltin,
+	},
+	{
+		Name: "gui_show",
+		Fn:   guiShowBuiltin,
+	},
+	{
+		Name: "gui_close",
+		Fn:   guiCloseBuiltin,
+	},
+	{
+		Name: "gui_run",
+		Fn:   guiRunBuiltin,
+	},
+	{
+		Name: "gui_table",
+		Fn:   guiTableBuiltin,
+	},
+	// File I/O functions
+	{
+		Name: "readFile",
+		Fn:   readFileBuiltin,
+	},
+	{
+		Name: "writeFile",
+		Fn:   writeFileBuiltin,
+	},
+	{
+		Name: "readDir",
+		Fn:   readDirBuiltin,
+	},
 }
 
 // GetBuiltinByName returns a builtin function by name

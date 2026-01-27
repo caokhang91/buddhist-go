@@ -1,0 +1,35 @@
+// GUI Example using faiface/pixel
+// This example demonstrates how to use the GUI builtin functions
+// Note: Requires the faiface/pixel package (already integrated)
+
+// Create a window
+place window = gui_window({
+    "title": "My Buddhist App",
+    "width": 800,
+    "height": 600,
+    "vsync": true
+})
+
+// Add a button with a click handler
+// Note: Button coordinates are in pixel space (0,0 is bottom-left)
+place btn = gui_button(window, {
+    "text": "Click Me!",
+    "x": 100.0,
+    "y": 100.0,
+    "width": 200.0,
+    "height": 50.0,
+    "onClick": fn() {
+        println("Button was clicked!")
+    }
+})
+
+// Show the window (windows are created when gui_run is called)
+gui_show(window)
+
+// Run the GUI event loop
+// This will create all windows and start the event loop
+gui_run()
+
+// Note: The event loop runs until all windows are closed
+// You can close a window programmatically with:
+// gui_close(window)
