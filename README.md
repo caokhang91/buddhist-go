@@ -26,10 +26,13 @@ A high-performance bytecode interpreter language built with Go, leveraging Go's 
 git clone https://github.com/caokhang91/buddhist-go.git
 cd buddhist-go
 
-# Build the interpreter
+# Build the interpreter (default: no GUI, for CI/headless)
 go build -o buddhist-go .
 
-# Or install directly
+# Build with GUI support (requires CGO and OpenGL; for -g/--gui and AddressManager)
+go build -tags gui -o buddhist-go .
+
+# Or install directly (add -tags gui if you need GUI)
 go install .
 ```
 

@@ -22,6 +22,12 @@ jobs:
           go-version-file: go.mod
           cache: true
 
+      # Default build excludes GUI (no -tags gui) so no CGO/OpenGL/X11 is needed
+      - name: Verify default build
+        run: |
+          set -euo pipefail
+          go build -o /dev/null ./...
+
       - name: Install govulncheck
         run: |
           set -euo pipefail
