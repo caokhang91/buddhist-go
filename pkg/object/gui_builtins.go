@@ -6,15 +6,18 @@ import (
 	"sync"
 
 	"github.com/faiface/pixel"
+	"github.com/faiface/pixel/imdraw"
 	"github.com/faiface/pixel/pixelgl"
+	"github.com/faiface/pixel/text"
 	"github.com/caokhang91/buddhist-go/pkg/tracing"
 )
 
 // GUIWindow represents a GUI window handle using pixel
 type GUIWindow struct {
-	ID     int64
-	Window *pixelgl.Window
-	Config pixelgl.WindowConfig
+	ID              int64
+	Window          *pixelgl.Window
+	Config          pixelgl.WindowConfig
+	BackgroundColor [3]float64 // R,G,B 0-1; used when clearing
 }
 
 func (w *GUIWindow) Type() ObjectType { return HASH_OBJ }
@@ -36,6 +39,10 @@ type GUIButton struct {
 	Width    float64
 	Height   float64
 	OnClick  *Closure
+	// Style: R,G,B 0-1; defaults if zero
+	BgR, BgG, BgB         float64
+	TextR, TextG, TextB   float64
+	TextAlign string // "left", "center", "right"
 }
 
 func (b *GUIButton) Type() ObjectType { return HASH_OBJ }
@@ -45,18 +52,24 @@ func (b *GUIButton) Inspect() string {
 
 // GUITable represents a GUI table for displaying data in rows and columns
 type GUITable struct {
-	ID          int64
-	WindowID    int64
-	X           float64
-	Y           float64
-	Width       float64
-	Height      float64
-	Headers     []string
-	Data        [][]string // Rows of data, each row is a slice of strings
-	RowHeight   float64
+	ID           int64
+	WindowID     int64
+	X            float64
+	Y            float64
+	Width        float64
+	Height       float64
+	Headers      []string
+	Data         [][]string // Rows of data, each row is a slice of strings
+	RowHeight    float64
 	HeaderHeight float64
-	OnRowClick  *Closure // Called with row index when a row is clicked
-	SelectedRow int      // Currently selected row (-1 if none)
+	OnRowClick   *Closure // Called with row index when a row is clicked
+	SelectedRow  int      // Currently selected row (-1 if none)
+	// Style: R,G,B 0-1; used when renderTable is implemented
+	HeaderBgR, HeaderBgG, HeaderBgB       float64
+	HeaderTextR, HeaderTextG, HeaderTextB float64
+	CellBgR, CellBgG, CellBgB             float64
+	SelectedRowBgR, SelectedRowBgG, SelectedRowBgB float64
+	TextR, TextG, TextB                   float64
 }
 
 func (t *GUITable) Type() ObjectType { return HASH_OBJ }
@@ -64,15 +77,30 @@ func (t *GUITable) Inspect() string {
 	return fmt.Sprintf("GUITable{id: %d, rows: %d, cols: %d}", t.ID, len(t.Data), len(t.Headers))
 }
 
-// Global state for GUI windows and components
+// deferredGUICall is a callback (and optional arg) to run after the event loop releases guiStateMu.
+// Callbacks must not run while we hold guiStateMu, else gui_alert/Lock in builtins deadlock.
+type deferredGUICall struct {
+	fn  *Closure
+	arg Object // nil = no arg
+}
+
+// Architecture rule: the event loop holds guiStateMu.RLock() while iterating windows and
+// calling handleWindowInput. We must never take guiStateMu.Lock() (or call into code that does)
+// from that section. All writes (dismiss alert, etc.) and all VM callbacks are queued and
+// run only after RUnlock, in order: first deferred state updates, then deferred callbacks.
+
 var (
-	guiStateMu      sync.RWMutex
+	guiStateMu              sync.RWMutex
+	guiCallbackQueue        []deferredGUICall
+	guiDeferredStateUpdates []func() // e.g. dismiss alert; run after RUnlock, before callbacks
+	guiCallbackMu           sync.Mutex
 	guiWindowID      int64 = 1
-	guiButtonID     int64 = 1
-	guiTableID      int64 = 1
+	guiButtonID      int64 = 1
+	guiTableID       int64 = 1
 	guiWindows       = make(map[int64]*GUIWindow)
 	guiButtons       = make(map[int64]*GUIButton)
 	guiTables        = make(map[int64]*GUITable)
+	guiAlerts        = make(map[int64]string) // windowID -> message; shown until OK clicked
 	guiRunStarted    bool
 	guiRunChan       chan struct{}
 	guiEventLoop     func()
@@ -99,22 +127,24 @@ func guiWindowBuiltin(args ...Object) Object {
 	width, _ := getIntField(config, "width", 800)
 	height, _ := getIntField(config, "height", 600)
 	vsync, _ := getBoolField(config, "vsync", true)
+	br, bg, bb := getColorField(config, "backgroundColor", 0.95, 0.95, 0.95)
 
 	guiStateMu.Lock()
 	windowID := guiWindowID
 	guiWindowID++
-	
+
 	// Create window config (window will be created when gui_run is called)
 	windowConfig := pixelgl.WindowConfig{
 		Title:  title,
 		Bounds: pixel.R(0, 0, float64(width), float64(height)),
 		VSync:  vsync,
 	}
-	
+
 	window := &GUIWindow{
-		ID:     windowID,
-		Window: nil, // Will be created when gui_run is called
-		Config: windowConfig,
+		ID:              windowID,
+		Window:          nil, // Will be created when gui_run is called
+		Config:          windowConfig,
+		BackgroundColor:  [3]float64{br, bg, bb},
 	}
 	guiWindows[windowID] = window
 	guiStateMu.Unlock()
@@ -171,11 +201,17 @@ func guiButtonBuiltin(args ...Object) Object {
 		return newError("second argument to `gui_button` must be HASH, got %s", args[1].Type())
 	}
 
-	text, _ := getStringField(config, "text", "Button")
+	textVal, _ := getStringField(config, "text", "Button")
 	x, _ := getFloatField(config, "x", 0.0)
 	y, _ := getFloatField(config, "y", 0.0)
 	width, _ := getFloatField(config, "width", 100.0)
 	height, _ := getFloatField(config, "height", 30.0)
+	bgR, bgG, bgB := getColorField(config, "bgColor", 0.85, 0.85, 0.9)
+	textR, textG, textB := getColorField(config, "textColor", 0.1, 0.1, 0.1)
+	textAlign, _ := getStringField(config, "textAlign", "left")
+	if textAlign != "left" && textAlign != "center" && textAlign != "right" {
+		textAlign = "left"
+	}
 
 	// Check for onClick callback
 	var onClickCallback *Closure
@@ -191,25 +227,32 @@ func guiButtonBuiltin(args ...Object) Object {
 	buttonID := guiButtonID
 	guiButtonID++
 	button := &GUIButton{
-		ID:       buttonID,
-		WindowID: windowID,
-		Text:     text,
-		X:        x,
-		Y:        y,
-		Width:    width,
-		Height:   height,
+		ID:        buttonID,
+		WindowID:  windowID,
+		Text:      textVal,
+		X:         x,
+		Y:         y,
+		Width:     width,
+		Height:    height,
 		OnClick:   onClickCallback,
+		BgR:       bgR,
+		BgG:       bgG,
+		BgB:       bgB,
+		TextR:      textR,
+		TextG:      textG,
+		TextB:      textB,
+		TextAlign:  textAlign,
 	}
 	guiButtons[buttonID] = button
 	guiStateMu.Unlock()
 
 	if tracing.IsEnabled() {
-		tracing.Trace("Created GUI button: id=%d, text=%s, window=%d", buttonID, text, windowID)
+		tracing.Trace("Created GUI button: id=%d, text=%s, window=%d", buttonID, textVal, windowID)
 	}
 
 	return newStringHash(map[string]Object{
 		"id":      &Integer{Value: buttonID},
-		"text":    &String{Value: text},
+		"text":    &String{Value: textVal},
 		"x":       &Float{Value: x},
 		"y":       &Float{Value: y},
 		"width":   &Float{Value: width},
@@ -286,6 +329,7 @@ func guiCloseBuiltin(args ...Object) Object {
 			window.Window.SetClosed(true)
 		}
 		delete(guiWindows, windowID)
+		delete(guiAlerts, windowID)
 		// Also remove buttons and tables for this window
 		for id, btn := range guiButtons {
 			if btn.WindowID == windowID {
@@ -307,7 +351,40 @@ func guiCloseBuiltin(args ...Object) Object {
 	if tracing.IsEnabled() {
 		tracing.Trace("Closed GUI window: id=%d", windowID)
 	}
+	return &Null{}
+}
 
+// guiAlertBuiltin shows a modal alert (message + OK) on the given window.
+// Usage: gui_alert(window, "Message here")
+func guiAlertBuiltin(args ...Object) Object {
+	if len(args) != 2 {
+		return newError("wrong number of arguments. got=%d, want=2", len(args))
+	}
+	windowHash, ok := args[0].(*Hash)
+	if !ok {
+		return newError("first argument to `gui_alert` must be HASH (window), got %s", args[0].Type())
+	}
+	windowIDObj, ok := getHashValue(windowHash, "id")
+	if !ok {
+		return newError("window must have an 'id' field")
+	}
+	windowID, errObj := intFromObject(windowIDObj, "gui_alert", "window.id")
+	if errObj != nil {
+		return errObj
+	}
+	guiStateMu.RLock()
+	_, exists := guiWindows[windowID]
+	guiStateMu.RUnlock()
+	if !exists {
+		return newError("window with id %d does not exist", windowID)
+	}
+	msg := args[1].Inspect()
+	if s, ok := args[1].(*String); ok {
+		msg = s.Value
+	}
+	guiStateMu.Lock()
+	guiAlerts[windowID] = msg
+	guiStateMu.Unlock()
 	return &Null{}
 }
 
@@ -354,6 +431,11 @@ func guiTableBuiltin(args ...Object) Object {
 	height, _ := getFloatField(config, "height", 300.0)
 	rowHeight, _ := getFloatField(config, "rowHeight", 25.0)
 	headerHeight, _ := getFloatField(config, "headerHeight", 30.0)
+	headerBgR, headerBgG, headerBgB := getColorField(config, "headerBg", 0.6, 0.6, 0.65)
+	headerTextR, headerTextG, headerTextB := getColorField(config, "headerTextColor", 0.1, 0.1, 0.1)
+	cellBgR, cellBgG, cellBgB := getColorField(config, "cellBg", 0.98, 0.98, 0.98)
+	selR, selG, selB := getColorField(config, "selectedRowBg", 0.7, 0.8, 0.95)
+	textR, textG, textB := getColorField(config, "textColor", 0.1, 0.1, 0.1)
 
 	// Extract headers
 	var headers []string
@@ -404,18 +486,33 @@ func guiTableBuiltin(args ...Object) Object {
 	tableID := guiTableID
 	guiTableID++
 	table := &GUITable{
-		ID:          tableID,
-		WindowID:    windowID,
-		X:           x,
-		Y:           y,
-		Width:       width,
-		Height:      height,
-		Headers:     headers,
-		Data:        data,
-		RowHeight:   rowHeight,
-		HeaderHeight: headerHeight,
-		OnRowClick:  onRowClickCallback,
-		SelectedRow: -1,
+		ID:               tableID,
+		WindowID:         windowID,
+		X:                x,
+		Y:                y,
+		Width:            width,
+		Height:           height,
+		Headers:          headers,
+		Data:             data,
+		RowHeight:        rowHeight,
+		HeaderHeight:     headerHeight,
+		OnRowClick:       onRowClickCallback,
+		SelectedRow:      -1,
+		HeaderBgR:        headerBgR,
+		HeaderBgG:        headerBgG,
+		HeaderBgB:        headerBgB,
+		HeaderTextR:      headerTextR,
+		HeaderTextG:      headerTextG,
+		HeaderTextB:      headerTextB,
+		CellBgR:          cellBgR,
+		CellBgG:          cellBgG,
+		CellBgB:          cellBgB,
+		SelectedRowBgR:   selR,
+		SelectedRowBgG:   selG,
+		SelectedRowBgB:   selB,
+		TextR:            textR,
+		TextG:            textG,
+		TextB:            textB,
 	}
 	guiTables[tableID] = table
 	guiStateMu.Unlock()
@@ -488,10 +585,10 @@ func guiRunBuiltin(args ...Object) Object {
 				if !window.Window.Closed() {
 					allClosed = false
 					window.Window.Update()
-					
-					// Clear window
-					window.Window.Clear(pixel.RGB(0.95, 0.95, 0.95))
-					
+
+					// Clear window with optional backgroundColor from config
+					window.Window.Clear(pixel.RGB(window.BackgroundColor[0], window.BackgroundColor[1], window.BackgroundColor[2]))
+
 					// Render components
 					renderWindowComponents(window)
 					
@@ -500,6 +597,11 @@ func guiRunBuiltin(args ...Object) Object {
 				}
 			}
 			guiStateMu.RUnlock()
+
+			// Run deferred work only when not holding guiStateMu (avoids deadlock).
+			// Order: state updates (e.g. dismiss alert) then VM callbacks.
+			runDeferredStateUpdates()
+			runDeferredCallbacks()
 
 			if allClosed {
 				break
@@ -545,18 +647,99 @@ func renderWindowComponents(window *GUIWindow) {
 			renderTable(window.Window, table)
 		}
 	}
+	// Render alert overlay if active
+	if msg, ok := guiAlerts[window.ID]; ok && msg != "" {
+		renderAlert(window.Window, msg)
+	}
 }
 
-// renderButton renders a button (simple rectangle with text)
+// renderAlert draws a modal overlay: dim background, centered box with message + OK button.
+func renderAlert(win *pixelgl.Window, message string) {
+	winW := win.Bounds().W()
+	winH := win.Bounds().H()
+	const boxW, boxH = 280.0, 120.0
+	boxMinX := winW*0.5 - boxW*0.5
+	boxMinY := winH*0.5 - boxH*0.5
+	boxMaxX := winW*0.5 + boxW*0.5
+	boxMaxY := winH*0.5 + boxH*0.5
+
+	imd := imdraw.New(nil)
+	// Overlay (dim)
+	imd.Color = pixel.RGB(0.2, 0.2, 0.22)
+	imd.Push(pixel.V(0, 0), pixel.V(winW, winH))
+	imd.Rectangle(0)
+	imd.Draw(win)
+	// Box
+	imd.Color = pixel.RGB(0.97, 0.97, 0.98)
+	imd.Push(pixel.V(boxMinX, boxMinY), pixel.V(boxMaxX, boxMaxY))
+	imd.Rectangle(0)
+	imd.Draw(win)
+	// OK button
+	const okW, okH = 80.0, 28.0
+	okMinX := winW*0.5 - okW*0.5
+	okMinY := boxMinY + 10.0
+	imd.Color = pixel.RGB(0.85, 0.85, 0.9)
+	imd.Push(pixel.V(okMinX, okMinY), pixel.V(okMinX+okW, okMinY+okH))
+	imd.Rectangle(0)
+	imd.Draw(win)
+
+	if text.Atlas7x13 != nil {
+		const pad = 12.0
+		// Message (truncate if too long)
+		msg := message
+		if len(msg) > 42 {
+			msg = msg[:39] + "..."
+		}
+		txt := text.New(pixel.V(boxMinX+pad, boxMaxY-pad), text.Atlas7x13)
+		txt.Color = pixel.RGB(0.1, 0.1, 0.1)
+		txt.WriteString(msg)
+		txt.Draw(win, pixel.IM)
+		// OK button label (centered in button area)
+		okY := boxMinY + 16.0
+		measure := text.New(pixel.ZV, text.Atlas7x13)
+		okW := measure.BoundsOf("OK").W()
+		okTxt := text.New(pixel.V(winW*0.5-okW*0.5, okY), text.Atlas7x13)
+		okTxt.Color = pixel.RGB(0.1, 0.1, 0.1)
+		okTxt.WriteString("OK")
+		okTxt.Draw(win, pixel.IM)
+	}
+}
+
+// renderButton renders a button (rectangle background + text label).
+// Script (button.X, button.Y) is top-left; converted to pixel (0,0=bottom-left) via winHeight.
 func renderButton(win *pixelgl.Window, button *GUIButton) {
-	// Draw button background (simple rectangle)
-	_ = pixel.R(button.X, button.Y, button.X+button.Width, button.Y+button.Height)
-	// Use pixel's imdraw for simple shapes (would need to import imdraw)
-	// For now, we'll just draw a simple colored rectangle using Clear with a mask
-	// This is a simplified version - in a real implementation, you'd use imdraw or sprites
-	
-	// Note: Actual rendering would require importing pixel/imdraw or using sprites
-	// This is a placeholder that shows the structure
+	const pad = 8.0
+	winHeight := win.Bounds().H()
+	_, pixelY := scriptTopLeftToPixel(button.X, button.Y, button.Height, winHeight)
+
+	// 1. Draw button background (filled rectangle)
+	imd := imdraw.New(nil)
+	imd.Color = pixel.RGB(button.BgR, button.BgG, button.BgB)
+	min := pixel.V(button.X, pixelY)
+	max := pixel.V(button.X+button.Width, pixelY+button.Height)
+	imd.Push(min, max)
+	imd.Rectangle(0)
+	imd.Draw(win)
+
+	// 2. Draw button text with alignment (left/center/right)
+	if button.Text != "" && text.Atlas7x13 != nil {
+		txtOriginY := winHeight - button.Y - pad
+		var originX float64
+		measure := text.New(pixel.ZV, text.Atlas7x13)
+		textW := measure.BoundsOf(button.Text).W()
+		switch button.TextAlign {
+		case "center":
+			originX = button.X + (button.Width-textW)*0.5
+		case "right":
+			originX = button.X + button.Width - pad - textW
+		default: // "left"
+			originX = button.X + pad
+		}
+		txt := text.New(pixel.V(originX, txtOriginY), text.Atlas7x13)
+		txt.Color = pixel.RGB(button.TextR, button.TextG, button.TextB)
+		txt.WriteString(button.Text)
+		txt.Draw(win, pixel.IM)
+	}
 }
 
 // renderTable renders a table with headers and data rows
@@ -571,61 +754,132 @@ func renderTable(win *pixelgl.Window, table *GUITable) {
 	// 5. Draw grid lines
 }
 
-// handleWindowInput handles input events for a window (mouse clicks, etc.)
+// handleWindowInput handles input events for a window (mouse clicks, etc.).
+// Mouse position is in pixel (0,0=bottom-left); converted to script (0,0=top-left) for hit-test.
 func handleWindowInput(window *GUIWindow) {
 	if window.Window == nil {
 		return
 	}
 
-	// Check for mouse clicks
 	if window.Window.JustPressed(pixelgl.MouseButtonLeft) {
 		mousePos := window.Window.MousePosition()
-		
+		winW := window.Window.Bounds().W()
+		winH := window.Window.Bounds().H()
+		scriptY := winH - mousePos.Y
+
 		guiStateMu.RLock()
-		
-		// Check if any button was clicked
+		alertMsg := guiAlerts[window.ID]
+		guiStateMu.RUnlock()
+		if alertMsg != "" {
+			// Alert is shown: only OK button is clickable (box 280x120, OK 80x28 centered at bottom).
+			// Do not Lock here — we're still under event loop's RLock. Queue dismiss to run after RUnlock.
+			const boxH = 120.0
+			boxMinY := winH*0.5 - boxH*0.5
+			okMinX := winW*0.5 - 40.0
+			if mousePos.X >= okMinX && mousePos.X <= okMinX+80 &&
+				mousePos.Y >= boxMinY+10 && mousePos.Y <= boxMinY+38 {
+				queueDismissAlert(window.ID)
+			}
+			return
+		}
+
+		// Collect callback (and table arg) under lock, then release and invoke — avoids deadlock
+		// when callback calls gui_alert() or other builtins that take guiStateMu.Lock().
+		var onClick *Closure
+		var onRowClick *Closure
+		var rowClickArg *Integer
+		var selectedTable *GUITable
+		var selectedRow int
+		guiStateMu.RLock()
 		for _, button := range guiButtons {
 			if button.WindowID == window.ID {
-				// Check if mouse is within button bounds
 				if mousePos.X >= button.X && mousePos.X <= button.X+button.Width &&
-					mousePos.Y >= button.Y && mousePos.Y <= button.Y+button.Height {
-					// Call the onClick callback
-					if button.OnClick != nil {
-						callGUICallback(button.OnClick)
-					}
+					scriptY >= button.Y && scriptY <= button.Y+button.Height {
+					onClick = button.OnClick
+					break
 				}
 			}
 		}
-
-		// Check if any table row was clicked
-		for _, table := range guiTables {
-			if table.WindowID == window.ID {
-				// Check if click is within table bounds
-				if mousePos.X >= table.X && mousePos.X <= table.X+table.Width &&
-					mousePos.Y >= table.Y && mousePos.Y <= table.Y+table.Height {
-					
-					// Calculate which row was clicked
-					clickY := mousePos.Y - table.Y
-					if clickY < table.HeaderHeight {
-						// Clicked on header, ignore
-						continue
-					}
-					
-					// Calculate row index
-					rowIndex := int((clickY - table.HeaderHeight) / table.RowHeight)
-					if rowIndex >= 0 && rowIndex < len(table.Data) {
-						table.SelectedRow = rowIndex
-						
-						// Call the onRowClick callback with row index
-						if table.OnRowClick != nil {
-							callGUICallbackWithArg(table.OnRowClick, &Integer{Value: int64(rowIndex)})
+		if onClick == nil {
+			for _, tbl := range guiTables {
+				if tbl.WindowID == window.ID {
+					if mousePos.X >= tbl.X && mousePos.X <= tbl.X+tbl.Width &&
+						scriptY >= tbl.Y && scriptY <= tbl.Y+tbl.Height {
+						localY := scriptY - tbl.Y
+						if localY >= tbl.HeaderHeight {
+							rowIndex := int((localY - tbl.HeaderHeight) / tbl.RowHeight)
+							if rowIndex >= 0 && rowIndex < len(tbl.Data) {
+								selectedTable = tbl
+								selectedRow = rowIndex
+								onRowClick = tbl.OnRowClick
+								rowClickArg = &Integer{Value: int64(rowIndex)}
+								break
+							}
 						}
 					}
 				}
 			}
 		}
-		
 		guiStateMu.RUnlock()
+
+		if selectedTable != nil {
+			selectedTable.SelectedRow = selectedRow
+		}
+		// Queue callbacks to run after guiStateMu is released (avoids deadlock when
+		// callback calls gui_alert or other builtins that take Lock).
+		if onClick != nil {
+			queueGUICallback(onClick, nil)
+		} else if onRowClick != nil && rowClickArg != nil {
+			queueGUICallback(onRowClick, rowClickArg)
+		}
+	}
+}
+
+// queueDismissAlert queues removal of the alert for windowID. Must be called from handleWindowInput
+// (which runs under RLock); the actual delete runs in runDeferredStateUpdates() after RUnlock.
+func queueDismissAlert(windowID int64) {
+	guiCallbackMu.Lock()
+	guiDeferredStateUpdates = append(guiDeferredStateUpdates, func() {
+		guiStateMu.Lock()
+		delete(guiAlerts, windowID)
+		guiStateMu.Unlock()
+	})
+	guiCallbackMu.Unlock()
+}
+
+// runDeferredStateUpdates runs all queued state updates (e.g. dismiss alert). Must be called when not holding guiStateMu.
+func runDeferredStateUpdates() {
+	guiCallbackMu.Lock()
+	updates := guiDeferredStateUpdates
+	guiDeferredStateUpdates = nil
+	guiCallbackMu.Unlock()
+	for _, fn := range updates {
+		fn()
+	}
+}
+
+// queueGUICallback queues a callback to run when runDeferredCallbacks() is called (after RUnlock).
+func queueGUICallback(fn *Closure, arg Object) {
+	if fn == nil {
+		return
+	}
+	guiCallbackMu.Lock()
+	guiCallbackQueue = append(guiCallbackQueue, deferredGUICall{fn: fn, arg: arg})
+	guiCallbackMu.Unlock()
+}
+
+// runDeferredCallbacks drains the queue and runs each callback. Must be called when not holding guiStateMu.
+func runDeferredCallbacks() {
+	guiCallbackMu.Lock()
+	q := guiCallbackQueue
+	guiCallbackQueue = nil
+	guiCallbackMu.Unlock()
+	for _, c := range q {
+		if c.arg != nil {
+			callGUICallbackWithArg(c.fn, c.arg)
+		} else {
+			callGUICallback(c.fn)
+		}
 	}
 }
 
@@ -679,6 +933,39 @@ func getBoolField(hash *Hash, key string, defaultValue bool) (bool, bool) {
 		return boolObj.Value, true
 	}
 	return defaultValue, false
+}
+
+// getColorField reads an optional color from hash[key]. Value must be a hash with "r","g","b"
+// (Float 0-1 or Integer 0-255). Returns (r,g,b) in 0-1 for pixel.RGB. Uses defaults if missing.
+func getColorField(hash *Hash, key string, defaultR, defaultG, defaultB float64) (r, g, b float64) {
+	value, ok := getHashValue(hash, key)
+	if !ok {
+		return defaultR, defaultG, defaultB
+	}
+	colorHash, ok := value.(*Hash)
+	if !ok {
+		return defaultR, defaultG, defaultB
+	}
+	r, _ = getFloatField(colorHash, "r", defaultR)
+	g, _ = getFloatField(colorHash, "g", defaultG)
+	b, _ = getFloatField(colorHash, "b", defaultB)
+	// Normalize: if > 1 assume 0-255
+	if r > 1 {
+		r = r / 255
+	}
+	if g > 1 {
+		g = g / 255
+	}
+	if b > 1 {
+		b = b / 255
+	}
+	return r, g, b
+}
+
+// scriptTopLeftToPixel converts script coords (x,y)=top-left of widget to pixel coords
+// (0,0)=bottom-left. pixelY is the bottom-edge Y of the widget.
+func scriptTopLeftToPixel(scriptX, scriptY, widgetHeight, winHeight float64) (pixelX, pixelY float64) {
+	return scriptX, winHeight - scriptY - widgetHeight
 }
 
 // callGUICallback calls a GUI event callback closure

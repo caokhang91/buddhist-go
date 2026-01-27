@@ -19,6 +19,8 @@ import (
 
 const VERSION = "1.0.3"
 
+func isGUIFlag(s string) bool { return s == "--gui" || s == "-g" }
+
 const BANNER = `
 ╔══════════════════════════════════════════════════════════════╗
 ║     ____            _     _ _     _     _                    ║
@@ -56,14 +58,27 @@ func main() {
 			fmt.Fprintf(os.Stderr, "Error: %s\n", err)
 			os.Exit(1)
 		}
-	} else if args[0] == "--gui" || args[0] == "-g" {
-		// GUI mode: run file with direct stdout/stderr (no HTML), for scripts using gui_run()
+	} else if isGUIFlag(args[0]) {
+		// GUI mode: --gui <file> or -g <file>
 		if len(args) < 2 {
 			fmt.Fprintln(os.Stderr, "Usage: buddhist-go --gui <file>")
 			fmt.Fprintln(os.Stderr, "  Run a script with GUI; stdout/stderr go to terminal, no HTML output.")
 			os.Exit(1)
 		}
-		if err := runFileDirect(args[1]); err != nil {
+		filename := args[1]
+		if isGUIFlag(filename) {
+			fmt.Fprintln(os.Stderr, "Usage: buddhist-go --gui <file>")
+			fmt.Fprintln(os.Stderr, "  Provide a .bl script path, not a flag.")
+			os.Exit(1)
+		}
+		if err := runFileDirect(filename); err != nil {
+			fmt.Fprintf(os.Stderr, "Error: %s\n", err)
+			os.Exit(1)
+		}
+	} else if len(args) >= 2 && isGUIFlag(args[1]) {
+		// <file> --gui or <file> -g
+		filename := args[0]
+		if err := runFileDirect(filename); err != nil {
 			fmt.Fprintf(os.Stderr, "Error: %s\n", err)
 			os.Exit(1)
 		}

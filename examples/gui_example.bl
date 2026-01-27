@@ -11,7 +11,8 @@ place window = gui_window({
 })
 
 // Add a button with a click handler
-// Note: Button coordinates are in pixel space (0,0 is bottom-left)
+// Coordinates (x, y) are top-left of the window; (0,0) is top-left.
+// Optional: "bgColor" and "textColor" with {"r", "g", "b"} (0-1 or 0-255).
 place btn = gui_button(window, {
     "text": "Click Me!",
     "x": 100.0,

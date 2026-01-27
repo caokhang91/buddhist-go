@@ -19,17 +19,19 @@ place addresses = [
 ]
 
 // Create a window for address management
+// Optional: "backgroundColor" with {"r", "g", "b"} (0-1 or 0-255)
 place window = gui_window({
     "title": "Physical Address Management",
     "width": 900,
     "height": 600,
-    "vsync": true
+    "vsync": true,
+    "backgroundColor": {"r": 0.96, "g": 0.96, "b": 0.97}
 })
 
-// Create a table to display addresses
+// Create a table to display addresses (x,y = top-left)
 place addressTable = gui_table(window, {
     "x": 50.0,
-    "y": 100.0,
+    "y": 80.0,
     "width": 800.0,
     "height": 400.0,
     "headers": ["Name", "Street", "City", "State", "ZIP"],
@@ -38,50 +40,56 @@ place addressTable = gui_table(window, {
     "headerHeight": 35.0,
     "onRowClick": fn(rowIndex) {
         println("Selected row: ", rowIndex)
-        // You can access the address data here
         if (rowIndex >= 0 && rowIndex < len(addresses)) {
             place selectedAddress = addresses[rowIndex]
             println("Selected address: ", selectedAddress)
+        } else {
+            println("Row clicked")
         }
     }
 })
 
-// Add a button to add new address
+// Toolbar: ba nút đặt trên cùng (y = 20, top-left), style khác nhau
+// textAlign: "left" | "center" | "right" — căn chữ trong nút
 place addButton = gui_button(window, {
     "text": "Add Address",
     "x": 50.0,
-    "y": 520.0,
+    "y": 20.0,
     "width": 150.0,
     "height": 40.0,
+    "bgColor": {"r": 0.2, "g": 0.55, "b": 0.85},
+    "textColor": {"r": 1.0, "g": 1.0, "b": 1.0},
+    "textAlign": "center",
     "onClick": fn() {
-        println("Add Address button clicked!")
-        // In a real application, you would open a dialog to add a new address
+        gui_alert(window, "Add Address: mở dialog thêm địa chỉ (demo gui_alert)")
     }
 })
 
-// Add a button to edit selected address
 place editButton = gui_button(window, {
     "text": "Edit Address",
     "x": 220.0,
-    "y": 520.0,
+    "y": 20.0,
     "width": 150.0,
     "height": 40.0,
+    "bgColor": {"r": 0.6, "g": 0.6, "b": 0.65},
+    "textColor": {"r": 1.0, "g": 1.0, "b": 1.0},
+    "textAlign": "center",
     "onClick": fn() {
         println("Edit Address button clicked!")
-        // In a real application, you would open a dialog to edit the selected address
     }
 })
 
-// Add a button to delete selected address
 place deleteButton = gui_button(window, {
     "text": "Delete Address",
     "x": 390.0,
-    "y": 520.0,
+    "y": 20.0,
     "width": 150.0,
     "height": 40.0,
+    "bgColor": {"r": 0.85, "g": 0.35, "b": 0.35},
+    "textColor": {"r": 1.0, "g": 1.0, "b": 1.0},
+    "textAlign": "center",
     "onClick": fn() {
         println("Delete Address button clicked!")
-        // In a real application, you would remove the selected address from the table
     }
 })
 
@@ -91,10 +99,5 @@ gui_show(window)
 // Run the GUI event loop
 gui_run()
 
-// Note: The table will display all addresses in a structured format
-// Clicking on a row will trigger the onRowClick callback
-// The table supports:
-// - Headers for column names
-// - Multiple rows of data
-// - Row selection on click
-// - Customizable row and header heights
+// Note: (x,y) = top-left. Table shows addresses; row click runs onRowClick(rowIndex).
+// Style: gui_window accepts backgroundColor; gui_button accepts bgColor, textColor (hash {"r","g","b"} 0-1 or 0-255).

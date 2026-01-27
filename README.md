@@ -64,6 +64,28 @@ Hello, World!
 ./buddhist-go examples/hello.bl
 ```
 
+### VS Code / Cursor Extension
+
+Có extension cho VS Code và Cursor: syntax highlighting cho `.bl`, debug (breakpoints, step, biến). Cách thêm:
+
+1. **Build interpreter và debug server** (từ repo root):
+   ```bash
+   go build -o buddhist-go .
+   cd cmd/buddhist-debug && go build -o buddhist-debug
+   ```
+   Đảm bảo `buddhist-go` và `buddhist-debug` trong PATH (hoặc cấu hình `buddhist.interpreterPath` trong extension).
+
+2. **Cài extension từ source**:
+   ```bash
+   cd vscode-extension
+   npm install
+   npm run compile
+   ```
+   - **Chạy thử**: mở thư mục `vscode-extension` trong VS Code/Cursor, nhấn **F5** → mở cửa sổ mới có extension.
+   - **Cài bằng VSIX**: `npm install -g vsce && vsce package` → trong VS Code/Cursor: Extensions (`Ctrl+Shift+X` / `Cmd+Shift+X`) → `...` → **Install from VSIX...** → chọn file `.vsix` vừa tạo.
+
+3. **Dùng debug**: mở file `.bl`, đặt breakpoint (click gutter), F5 → chọn **Launch Buddhist Program**. Cần `.vscode/launch.json` với `"type": "buddhist"`, `"program": "${workspaceFolder}/examples/hello.bl"` (xem [vscode-extension/README.md](vscode-extension/README.md) và [vscode-extension/QUICKSTART.md](vscode-extension/QUICKSTART.md)).
+
 ## Language Syntax
 
 ### Variables
@@ -115,6 +137,46 @@ for (place i = 0; i < 10; i = i + 1) {
     println(i);
 }
 ```
+
+### Error handling
+
+Use `try` / `catch` / `finally` and `throw` to handle errors. Built-in functions that fail (e.g. wrong types or invalid values) return error objects that are treated as throws, so you can catch them with `try`/`catch`.
+
+```javascript
+// Basic try/catch
+try {
+    place n = int("not a number");  // builtin returns error → thrown
+} catch (e) {
+    println("Caught: ", e);         // e is the error message/object
+}
+
+// try/catch with optional variable
+try {
+    throw "something went wrong";
+} catch (err) {
+    println(err);                   // "something went wrong"
+}
+
+// try/catch/finally
+try {
+    place x = first(null);          // type error from builtin
+} catch (e) {
+    println("Error: ", e);
+} finally {
+    println("cleanup runs either way");
+}
+
+// Uncaught throws become runtime errors and stop the script
+throw "fatal";  // if not inside try, script exits with "uncaught throw"
+```
+
+| Construct   | Description |
+|------------|-------------|
+| `try { ... }` | Run code that may throw |
+| `catch (e) { ... }` | Run if something was thrown; `e` is optional and receives the thrown value |
+| `catch { ... }` | Catch without binding the thrown value |
+| `finally { ... }` | Run after try/catch (on normal exit or after catch) |
+| `throw expr;` | Throw a value (string, number, or any object); execution jumps to the nearest catch/finally |
 
 ### Arrays
 
@@ -251,6 +313,7 @@ Built-in GUI functions powered by [faiface/pixel](https://github.com/faiface/pix
 | `gui_button(window, config)` | Create a button with text, position, size, and onClick callback |
 | `gui_table(window, config)` | Create a table with headers and data rows for displaying structured data |
 | `gui_show(window)` | Mark a window to be shown (windows are created when `gui_run()` is called) |
+| `gui_alert(window, message)` | Show a modal alert (message + OK) on the window |
 | `gui_close(window)` | Close and remove a window |
 | `gui_run()` | Start the GUI event loop (creates all windows and handles events) |
 
@@ -316,12 +379,15 @@ place table = gui_table(window, {
 - Đảm bảo đang login vào macOS với session có đồ họa (không phải `ssh ...` từ máy khác).
 - Thử mở một cửa sổ Terminal mới và chạy lại: `cd ... && ./buddhist-go -g examples/address_management.bl`.
 
-**Note:** 
-- Button and table coordinates use pixel space where (0,0) is at the bottom-left corner
-- Windows are created when `gui_run()` is called, not immediately
-- The event loop runs until all windows are closed
-- See `examples/gui_example.bl` for a basic example
-- See `examples/address_management.bl` for a table example with address management
+**Coordinates and style:**
+- Widget coordinates `(x, y)` use **top-left as (0,0)**. Larger `y` = lower on the window.
+- Optional colors: `gui_window` accepts `backgroundColor`; `gui_button` accepts `bgColor` and `textColor`. Each is a hash `{"r": 0.9, "g": 0.9, "b": 0.9}` with values 0–1 (or 0–255). Example: `gui_button(window, { "text": "OK", "x": 10, "y": 10, "width": 80, "height": 30, "bgColor": {"r": 0.2, "g": 0.5, "b": 0.9}, "onClick": fn() { } })`.
+- Button text alignment: `gui_button` accepts optional `textAlign`: `"left"` (default), `"center"`, or `"right"`.
+
+**Note:**
+- Windows are created when `gui_run()` is called, not immediately.
+- The event loop runs until all windows are closed.
+- See `examples/gui_example.bl` for a basic example and `examples/address_management.bl` for a table example.
 
 ### HTTP Functions
 
@@ -466,7 +532,7 @@ Contributions are welcome! Please feel free to submit a Pull Request.
 - ✅ Math functions: `sqrt()`, `pow()`, `abs()`, `floor()`, `ceil()`, `round()`, `sin()`, `cos()`, `tan()`, `log()`, `exp()`, `random()`
 - ✅ String functions: `split()`, `join()`, `trim()`, `substring()`, `replace()`, `upper()`, `lower()`, `startsWith()`, `endsWith()`, `repeat()`
 - ✅ Array functions: `map()`, `filter()`, `reduce()`, `reverse()`, `contains()`, `indexOf()`, `unique()`, `flatten()`, `sum()`, `min()`, `max()`, `avg()`
-- ✅ GUI functions: `gui_window()`, `gui_button()`, `gui_show()`, `gui_close()`, `gui_run()` (powered by faiface/pixel)
+- ✅ GUI functions: `gui_window()`, `gui_button()`, `gui_show()`, `gui_alert()`, `gui_close()`, `gui_run()` (powered by faiface/pixel)
 - ✅ File I/O: `readFile()`, `writeFile()`, `readDir()`
 
 ### Medium-term (1 month)

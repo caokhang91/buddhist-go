@@ -529,6 +529,18 @@ func (vm *VM) Run() error {
 			if err != nil {
 				return err
 			}
+			// Builtin errors are treated as throws so try/catch can catch them
+			if top := vm.StackTop(); top != nil {
+				if errObj, ok := top.(*object.Error); ok {
+					vm.sp--
+					if _, throwErr := vm.throwValue(errObj); throwErr != nil {
+						return throwErr
+					}
+					frame = vm.currentFrame()
+					frameIns = frame.Instructions()
+					continue
+				}
+			}
 			// Update frame reference after call
 			frame = vm.frames[vm.framesIndex-1]
 			frameIns = frame.Instructions()
@@ -945,38 +957,17 @@ func (vm *VM) Run() error {
 			})
 
 		case code.OpThrow:
-			// Pop thrown value
 			if vm.sp == 0 {
 				return fmt.Errorf("throw with empty stack")
 			}
 			vm.sp--
 			thrown := vm.stack[vm.sp]
-
-			if len(vm.exceptionHandlers) == 0 {
-				return fmt.Errorf("uncaught throw: %s", thrown.Inspect())
+			if _, err := vm.throwValue(thrown); err != nil {
+				return err
 			}
-
-			// Pop handler and unwind VM state back to the try site
-			h := vm.exceptionHandlers[len(vm.exceptionHandlers)-1]
-			vm.exceptionHandlers = vm.exceptionHandlers[:len(vm.exceptionHandlers)-1]
-
-			vm.framesIndex = h.framesIndex
-			frame = vm.frames[vm.framesIndex-1]
+			frame = vm.currentFrame()
 			frameIns = frame.Instructions()
-			vm.sp = h.sp
-
-			// Push thrown value so catch can bind/pop it
-			vm.stack[vm.sp] = thrown
-			vm.sp++
-
-			if h.catchPos != 0 {
-				frame.ip = h.catchPos - 1
-			} else if h.finallyPos != 0 {
-				frame.ip = h.finallyPos - 1
-				// NOTE: Uncaught rethrow after finally is not implemented.
-			} else {
-				return fmt.Errorf("uncaught throw: %s", thrown.Inspect())
-			}
+			continue
 
 		case code.OpFinally:
 			// Normal-flow exit from try: pop handler and jump to target (finally or after).
@@ -1460,6 +1451,29 @@ func (vm *VM) callClosure(cl *object.Closure, numArgs int) error {
 	vm.sp = frame.basePointer + cl.Fn.NumLocals
 
 	return nil
+}
+
+// throwValue unwinds the VM to the nearest try-handler, pushing thrown so catch can use it.
+// Returns (true, nil) when a handler was found and state was updated; (false, err) when uncaught.
+func (vm *VM) throwValue(thrown object.Object) (handled bool, err error) {
+	if len(vm.exceptionHandlers) == 0 {
+		return false, fmt.Errorf("uncaught throw: %s", thrown.Inspect())
+	}
+	h := vm.exceptionHandlers[len(vm.exceptionHandlers)-1]
+	vm.exceptionHandlers = vm.exceptionHandlers[:len(vm.exceptionHandlers)-1]
+	vm.framesIndex = h.framesIndex
+	f := vm.frames[vm.framesIndex-1]
+	vm.sp = h.sp
+	vm.stack[vm.sp] = thrown
+	vm.sp++
+	if h.catchPos != 0 {
+		f.ip = h.catchPos - 1
+	} else if h.finallyPos != 0 {
+		f.ip = h.finallyPos - 1
+	} else {
+		return false, fmt.Errorf("uncaught throw: %s", thrown.Inspect())
+	}
+	return true, nil
 }
 
 func (vm *VM) callBuiltin(builtin *object.Builtin, numArgs int) error {

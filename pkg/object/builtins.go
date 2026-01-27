@@ -1279,6 +1279,10 @@ var Builtins = []BuiltinDef{
 		Fn:   guiCloseBuiltin,
 	},
 	{
+		Name: "gui_alert",
+		Fn:   guiAlertBuiltin,
+	},
+	{
 		Name: "gui_run",
 		Fn:   guiRunBuiltin,
 	},

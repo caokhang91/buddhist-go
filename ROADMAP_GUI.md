@@ -22,7 +22,7 @@ Built-in GUI dùng [faiface/pixel](https://github.com/faiface/pixel) (pixelgl). 
 
 ### Chưa vẽ thật
 
-- **Button**: `renderButton()` chưa vẽ chữ/rect (mới có khung logic).
+- **Button**: đã vẽ — rect (imdraw) + text (pixel/text).
 - **Table**: `renderTable()` chưa vẽ header/cell/text/grid (mới có khung logic).
 
 Tức là layout + event đã có, phần nhìn thấy (text + hình) chưa implement.
@@ -33,7 +33,7 @@ Tức là layout + event đã có, phần nhìn thấy (text + hình) chưa impl
 
 ### 1. Rendering cơ bản (ưu tiên)
 
-- [ ] **Button**: vẽ bằng `pixel/imdraw` (rect + màu) và `pixel/text` (label).
+- [x] **Button**: vẽ bằng `pixel/imdraw` (rect + màu) và `pixel/text` (label).
 - [ ] **Table**: vẽ header + từng dòng, text mỗi ô bằng `pixel/text`, có thể dùng imdraw cho grid/background.
 
 ### 2. Widgets & API
@@ -45,8 +45,8 @@ Tức là layout + event đã có, phần nhìn thấy (text + hình) chưa impl
 
 ### 3. Layout & styling
 
-- [ ] Mốc tọa độ rõ ràng (ví dụ: góc trên-trái = (0,0) hoặc hỗ trợ cả hai).
-- [ ] Hỗ trợ font/size/color qua config (ví dụ trong `gui_button`, `gui_label`, `gui_table`).
+- [x] Mốc tọa độ rõ ràng: script (0,0) = góc **trên-trái**; convert nội bộ sang pixel (góc dưới-trái) khi vẽ và hit-test.
+- [x] Hỗ trợ màu qua config: `gui_window` dùng `backgroundColor` (hash `{"r", "g", "b"}` float 0–1 hoặc int 0–255); `gui_button` dùng `bgColor`, `textColor`; `gui_table` dùng `headerBg`, `headerTextColor`, `cellBg`, `selectedRowBg`, `textColor`. Chưa có `fontSize` / theme.
 - [ ] Theme đơn giản: light/dark, màu nền/viền/màu chữ.
 
 ### 4. Ổn định & nền tảng
@@ -65,7 +65,8 @@ Tức là layout + event đã có, phần nhìn thấy (text + hình) chưa impl
 ## Ghi chú kỹ thuật
 
 - **Thread**: `gui_run()` gọi `pixelgl.Run(eventLoop)` trên luồng hiện tại (block). Chạy bằng `-g` từ process bình thường thì đây là main thread, cửa sổ hiện đúng.
-- **Tọa độ**: pixel (0,0) ở góc dưới-trái.
+- **Tọa độ**: Script (x,y) dùng **(0,0) = góc trên-trái**; convert nội bộ sang pixel (0,0 = góc dưới-trái) khi vẽ và hit-test.
+- **Event loop & lock**: Vòng lặp event giữ `guiStateMu.RLock()` khi duyệt cửa sổ và gọi `handleWindowInput`. **Không được** gọi `guiStateMu.Lock()` (hoặc code chạy VM/builtin cần Lock) trong đoạn đó — dễ deadlock. Mọi ghi state (vd. dismiss alert) và mọi callback VM đều đưa vào hàng đợi deferred, chạy **sau** khi RUnlock: trước `runDeferredStateUpdates()` (vd. xóa alert), rồi `runDeferredCallbacks()` (onClick / onRowClick).
 - **Code**: `pkg/object/gui_builtins.go` — state, builtins, `renderWindowComponents` / `handleWindowInput`.
 
 File này sẽ cập nhật khi làm xong từng mục roadmap hoặc khi đổi hướng thiết kế GUI.

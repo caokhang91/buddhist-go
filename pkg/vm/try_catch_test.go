@@ -96,3 +96,20 @@ func TestFinallyRunsOnNormalAndThrow(t *testing.T) {
 	}
 }
 
+// TestBuiltinErrorAsThrow ensures builtin functions that return error objects
+// are treated as throws so try/catch can catch them.
+func TestBuiltinErrorAsThrow(t *testing.T) {
+	input := `
+	place x = 0;
+	try {
+		place n = int("not a number");
+		x = 1;
+	} catch (e) {
+		x = 2;
+	}
+	x;
+	`
+	evaluated := testEval(input)
+	testObject(t, evaluated, int64(2))
+}
+
