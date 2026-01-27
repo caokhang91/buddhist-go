@@ -46,6 +46,44 @@ type BuiltinDef struct {
 	Fn   BuiltinFunction
 }
 
+// VM state store: key-value store for the process (scripts use state_get/state_set).
+var (
+	vmState   = make(map[string]Object)
+	vmStateMu sync.RWMutex
+)
+
+func stateGetBuiltin(args ...Object) Object {
+	if len(args) != 1 {
+		return newError("wrong number of arguments. got=%d, want=1", len(args))
+	}
+	key := toStateKey(args[0])
+	vmStateMu.RLock()
+	v := vmState[key]
+	vmStateMu.RUnlock()
+	if v == nil {
+		return &Null{}
+	}
+	return v
+}
+
+func stateSetBuiltin(args ...Object) Object {
+	if len(args) != 2 {
+		return newError("wrong number of arguments. got=%d, want=2", len(args))
+	}
+	key := toStateKey(args[0])
+	vmStateMu.Lock()
+	vmState[key] = args[1]
+	vmStateMu.Unlock()
+	return &Null{}
+}
+
+func toStateKey(obj Object) string {
+	if s, ok := obj.(*String); ok {
+		return s.Value
+	}
+	return obj.Inspect()
+}
+
 // Builtins is the list of builtin functions
 var Builtins = []BuiltinDef{
 	{
@@ -1289,6 +1327,15 @@ var Builtins = []BuiltinDef{
 	{
 		Name: "gui_table",
 		Fn:   guiTableBuiltin,
+	},
+	// VM state: state_get(key), state_set(key, value)
+	{
+		Name: "state_get",
+		Fn:   stateGetBuiltin,
+	},
+	{
+		Name: "state_set",
+		Fn:   stateSetBuiltin,
 	},
 	// File I/O functions
 	{

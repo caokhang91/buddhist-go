@@ -1,0 +1,84 @@
+// Physical Address Management Example (embedded in AddressManager native app)
+// Run: ./AddressManager (default) or ./AddressManager -script /path/to/other.bl
+
+// Sample address data
+place addresses = [
+    ["John Doe", "123 Main St", "New York", "NY", "10001"],
+    ["Jane Smith", "456 Oak Ave", "Los Angeles", "CA", "90001"],
+    ["Bob Johnson", "789 Pine Rd", "Chicago", "IL", "60601"],
+    ["Alice Williams", "321 Elm St", "Houston", "TX", "77001"],
+    ["Charlie Brown", "654 Maple Dr", "Phoenix", "AZ", "85001"]
+]
+
+place window = gui_window({
+    "title": "Physical Address Management",
+    "width": 900,
+    "height": 600,
+    "vsync": true,
+    "backgroundColor": {"r": 0.96, "g": 0.96, "b": 0.97}
+})
+
+place addressTable = gui_table(window, {
+    "x": 50.0,
+    "y": 80.0,
+    "width": 800.0,
+    "height": 400.0,
+    "headers": ["Name", "Street", "City", "State", "ZIP"],
+    "data": addresses,
+    "rowHeight": 30.0,
+    "headerHeight": 35.0,
+    "onRowClick": fn(rowIndex) {
+        println("Selected row: ", rowIndex)
+        if (rowIndex >= 0 && rowIndex < len(addresses)) {
+            place selectedAddress = addresses[rowIndex]
+            println("Selected address: ", selectedAddress)
+        } else {
+            println("Row clicked")
+        }
+    }
+})
+
+place addButton = gui_button(window, {
+    "text": "Add Address",
+    "x": 50.0,
+    "y": 20.0,
+    "width": 150.0,
+    "height": 40.0,
+    "bgColor": {"r": 0.2, "g": 0.55, "b": 0.85},
+    "textColor": {"r": 1.0, "g": 1.0, "b": 1.0},
+    "textAlign": "center",
+    "onClick": fn() {
+        gui_alert(window, "Add Address: mở dialog thêm địa chỉ (demo gui_alert)")
+    }
+})
+
+place editButton = gui_button(window, {
+    "text": "Edit Address",
+    "x": 220.0,
+    "y": 20.0,
+    "width": 150.0,
+    "height": 40.0,
+    "bgColor": {"r": 0.6, "g": 0.6, "b": 0.65},
+    "textColor": {"r": 1.0, "g": 1.0, "b": 1.0},
+    "textAlign": "center",
+    "onClick": fn() {
+        println("Edit Address button clicked!")
+    }
+})
+
+place deleteButton = gui_button(window, {
+    "text": "Delete Address",
+    "x": 390.0,
+    "y": 20.0,
+    "width": 150.0,
+    "height": 40.0,
+    "bgColor": {"r": 0.85, "g": 0.35, "b": 0.35},
+    "textColor": {"r": 1.0, "g": 1.0, "b": 1.0},
+    "textAlign": "center",
+    "onClick": fn() {
+        println("Delete Address button clicked!")
+    }
+})
+
+gui_show(window)
+gui_run()
