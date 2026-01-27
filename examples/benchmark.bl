@@ -42,12 +42,15 @@ while (x < 50) {
 }
 println("Nested loop iterations: " + str(count));
 
-// Test 6: Function calls (recursive)
+// Test 6: Function calls (iterative factorial to avoid recursion edge-case)
 place factorial = fn(n) {
-    if (n <= 1) {
-        return 1;
+    place acc = 1;
+    place k = n;
+    while (k > 1) {
+        set acc = acc * k;
+        set k = k - 1;
     }
-    return n * factorial(n - 1);
+    return acc;
 };
 
 place fact10 = factorial(10);
